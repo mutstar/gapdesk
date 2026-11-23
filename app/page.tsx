@@ -13,14 +13,14 @@ function Plot({data}:{data:Row[]}){
  useEffect(()=>{const el=ref.current;if(!el)return;
  function draw(){if(!el)return;const box=el.getBoundingClientRect(),w=box.width,h=box.height,dpr=window.devicePixelRatio||1;
  el.width=w*dpr;el.height=h*dpr;const ctx=el.getContext('2d');if(!ctx)return;ctx.scale(dpr,dpr);
- ctx.strokeStyle='#35453c';ctx.lineWidth=.7;ctx.setLineDash([3,5]);
+ ctx.strokeStyle='#a9c9e4';ctx.lineWidth=.7;ctx.setLineDash([3,5]);
  for(let y=12;y<h;y+=27){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
  for(let x=12;x<w;x+=w/8){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
  if(data.length<2)return;const values=data.map(x=>x.price),lo=Math.min(...values),hi=Math.max(...values);
  const pts=values.map((v,i)=>[3+i*(w-10)/(values.length-1),h-10-(v-lo)/(hi-lo||1)*(h-25)]);
- ctx.setLineDash([]);ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.lineWidth=2.5;ctx.strokeStyle='#d6fa67';ctx.stroke();
- const grad=ctx.createLinearGradient(0,5,0,h);grad.addColorStop(0,'rgba(195,244,79,.22)');grad.addColorStop(1,'rgba(195,244,79,0)');ctx.lineTo(w-7,h);ctx.lineTo(3,h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
- const [x,y]=pts.at(-1)!;ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle='#e2ff86';ctx.fill();
+ ctx.setLineDash([]);ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.lineWidth=2.5;ctx.strokeStyle='#2277b7';ctx.stroke();
+ const grad=ctx.createLinearGradient(0,5,0,h);grad.addColorStop(0,'rgba(68,159,228,.22)');grad.addColorStop(1,'rgba(68,159,228,0)');ctx.lineTo(w-7,h);ctx.lineTo(3,h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+ const [x,y]=pts.at(-1)!;ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle='#c75c19';ctx.fill();
  }const obs=new ResizeObserver(draw);obs.observe(el);draw();return()=>obs.disconnect()},[data]);
  return <canvas ref={ref} role="img" aria-label="최근 24개 시간봉의 ETH 가격 추이"/>;
 }
@@ -90,7 +90,7 @@ export default function Home(){
  }
  return <><header className="mast"><div className="mastInner"><a href="/" className="brand"><i className="mark"><b/><b/><b/></i>Gapdesk</a><nav aria-label="주 메뉴">{['스캐너','데이터 소스'].map((n,i)=><button key={n} className={view===n?'navOn':''} onClick={()=>setView(n)}>{i?<Layers size={16}/>:<Activity size={17}/>} {n}</button>)}</nav><button className="wallet" onClick={()=>{setNote('');showWallet(true)}}><Wallet size={16}/>{address?address.slice(0,6)+'…'+address.slice(-4):'지갑 연결'}</button></div></header>
  <main><div className="titleLine"><div><div className="overline"><span className="liveDot"/> ETH / USDC · 현물</div><h1>{view==='스캐너'?'아비트라지 스캐너':'데이터 소스'}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}자동 스캔 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
- <section className="overview"><div className="chartBox"><div className="chartHeader"><span className="asset"><span className="eth">Ξ</span>Ethereum <small>ETH / USDC</small></span><span className="period">1H × 24</span></div><div className="price">{last?format(last):'—'} <small>USDC</small></div><div className="change">{change!==null?<><b className={change>=0?'up':'down'}>{change>=0?'+':''}{format(change)}%</b> 첫 시간봉 대비</>:'가격 수신 대기'}</div><Plot data={candles}/><div className="axis"><span>{candles.length?'24개 시간봉 · KuCoin':'차트 수신 대기'}</span><span>{spot?'현재 호가 중간값':'최근 시간봉 종가'}</span></div></div>
+ <section className="overview"><div className="chartBox"><div className="chartData"><div className="chartHeader"><span className="asset"><span className="eth">Ξ</span>Ethereum <small>ETH / USDC</small></span><span className="period">1H × 24</span></div><div className="price">{last?format(last):'—'} <small>USDC</small></div><div className="change">{change!==null?<><b className={change>=0?'up':'down'}>{change>=0?'+':''}{format(change)}%</b> 첫 시간봉 대비</>:'가격 수신 대기'}</div><Plot data={candles}/><div className="axis"><span>{candles.length?'24개 시간봉 · KuCoin':'차트 수신 대기'}</span><span>{spot?'현재 호가 중간값':'최근 시간봉 종가'}</span></div></div><div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div></div>
  <div className="metrics"><div><span><Radio size={16}/>연결된 마켓</span><strong>{active.length}<small> / 4</small></strong></div><div><span><Network size={16}/>비교한 경로</span><strong>{snapshot?.checked??'—'}<small> 개</small></strong></div><div><span><ShieldCheck size={16}/>조건 충족 갭</span><strong className="qual">{qualified.length}<small> 건</small></strong></div></div></section>
  {view==='스캐너'?<div className="workspace"><section className="board"><div className="panelHead"><div><h2>실행 가능 갭</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{pairs.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
  <div className="tableHead"><span>매수 · 매도 마켓</span><span>이동 경로</span><span>예상 순차익</span></div>
