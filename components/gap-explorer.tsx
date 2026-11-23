@@ -3,25 +3,27 @@ import {useState} from 'react';
 import {ContractCopy,type Contract} from './contract-copy';
 import {MarketTabs} from './market-tabs';
 import {MarketArrivals} from './market-arrivals';
+import {TransferBadges,type TransferStatus} from './trade-leg';
 import {strictContractKey} from '../lib/contract-identity.mjs';
 import {displayedObservations} from '../lib/observation-window.mjs';
 import {isFreshQualified} from '../lib/quote-freshness.mjs';
 import {venueFamily} from '../lib/venue-family.mjs';
 
 type Data=Record<string,any>;
-type Leg={kind:string,name:string,contract?:string,fundingRate?:number|null,intervalHours?:number|null};
+type Leg={kind:string,name:string,contract?:string,fundingRate?:number|null,intervalHours?:number|null,transfer?:TransferStatus|null};
 type Quote={displayKey:string,previous:boolean,match:Contract,id:string,symbol:string,kind:string,buy:Leg,sell:Leg,ask:number,bid:number,gap:number,time:number};
 type Props={snapshot:Data|null,observations:Data|null,waiting:boolean,now:number,budget:number,busy:boolean,error:string,verified:Data[],onOpen:(row:Data)=>void};
 const prices=new Intl.NumberFormat('en-US',{maximumSignificantDigits:7});
 const percentages=new Intl.NumberFormat('en-US',{maximumFractionDigits:3});
 const dateFormat=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit'});
 const timeFormat=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit'});
-function QuoteLeg({leg,price,side}:{leg:Leg,price:number,side:'buy'|'sell'}){
+function QuoteLeg({leg,price,side,now}:{leg:Leg,price:number,side:'buy'|'sell',now:number}){
   const perp=leg.kind==='PERP',buy=side==='buy';
   const action=perp?(buy?'롱':'숏'):(buy?'매수':'매도');
   return <td className={buy?'gapQuoteBuy':'gapQuoteSell'}>
     <div className="gapVenue"><span className={'gapLegLabel'+(perp?' gapPerp':'')}>{action}</span><strong title={leg.contract}>{leg.name}</strong></div>
     <div className="gapLegPrice">{prices.format(price)} <small>USDC</small></div>
+    <TransferBadges kind={leg.kind} status={leg.transfer} side={side} now={now}/>
     {perp&&leg.fundingRate!=null&&<small className="gapFunding">펀딩 {(leg.fundingRate*100).toFixed(4)}%{leg.intervalHours?' / '+leg.intervalHours+'h':''}</small>}
   </td>;
 }
@@ -57,7 +59,7 @@ export function GapExplorer({snapshot,observations,waiting,now,budget,busy,error
         const date=dateFormat.format(row.time);
         return <tr className="gapQuoteRow" key={row.displayKey} data-state={row.previous?'previous':'current'}>
           <th scope="row" className="gapAsset"><strong>{row.symbol}</strong><ContractCopy item={row.match}/></th>
-          <QuoteLeg leg={row.buy} price={row.ask} side="buy"/><QuoteLeg leg={row.sell} price={row.bid} side="sell"/>
+          <QuoteLeg leg={row.buy} price={row.ask} side="buy" now={now}/><QuoteLeg leg={row.sell} price={row.bid} side="sell" now={now}/>
           <td className="gapQuoteValue"><b>{row.gap<0.001?'<0.001%':'+'+percentages.format(row.gap)+'%'}</b>
             {exact&&<button type="button" className="gapRouteAction" onClick={()=>{if(isFreshQualified(exact,Date.now()))onOpen(exact)}} aria-label={row.symbol+' 검증 경로 보기'}>
               {exact.bridge?exact.bridge+' · ':''}순차익 +{prices.format(exact.profit)} USDC <span aria-hidden="true">›</span>

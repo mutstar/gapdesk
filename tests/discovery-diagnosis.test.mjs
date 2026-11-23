@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {discover} from '../lib/universe.mjs';
+import {transferStatus} from '../lib/contract-identity.mjs';
 import {CHAINS} from '../lib/assets.js';
 const ca='0x'+'1'.repeat(40);
 function exchange(name,px,network={},extra={}){
@@ -65,4 +66,21 @@ test('shows one rejected and one screened route per chain/CA/family, without pro
   assert.equal(diagnosticGaps.length,1);assert.equal(diagnosticGaps[0].sell.name,'closed');
   assert.ok(!candidates.some(c=>c.id===diagnosticGaps[0].id));
   assert.deepEqual(diagnosticGaps,discover(venues,1000,5,1,false,true).diagnosticGaps);
+});
+
+test('venue labels use the matched chain and contract, and preserve independent exchange flags',()=>{
+  const a=exchange('buyer',1,{withdrawOpen:true,depositOpen:false});
+  const b=exchange('seller',1.1,{withdrawOpen:false,depositOpen:true});
+  b.networks.push({...b.networks[0],chain:56,withdrawOpen:true,depositOpen:false});
+  const discovered=discover([a,b],1000,5,1);
+  const gap=discovered.spotGaps.find(g=>g.match.chain===1);
+  const asset=discovered.summaries.find(g=>g.match?.chain===1);
+  assert.deepEqual(gap.buy.transfer,{deposit:false,withdraw:true,at:a.networkTime});
+  assert.deepEqual(asset.sellTransfer,{deposit:true,withdraw:false,at:b.networkTime});
+  assert.deepEqual(gap.sell.transfer,asset.sellTransfer);
+  assert.equal(asset.sellKind,'CEX');
+  assert.deepEqual(transferStatus(b,{chain:1,token:'0x'+'2'.repeat(40)}),{deposit:null,withdraw:null,at:b.networkTime});
+  b.networks.push({...b.networks[0],depositOpen:false});
+  assert.deepEqual(transferStatus(b,gap.match),{deposit:null,withdraw:false,at:b.networkTime});
+  assert.equal(transferStatus(pool(1),gap.match),undefined);
 });

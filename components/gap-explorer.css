@@ -51,6 +51,25 @@
 }
 .gapLegPrice { color: #405d75; font-size: .83rem; margin-top: 3px; }
 .gapLegPrice small, .gapFunding { font-size: .69rem; color: #627a8a; }
+.transferBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-top: 4px;
+}
+.transferBadges > span {
+  display: inline-block;
+  padding: 1px 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  font-size: .68rem;
+  font-weight: 550;
+  line-height: 1.5;
+  color: #526474;
+  background: #ebeff3;
+}
+.transferBadges > [data-state="open"] { color: #126048; background: #e2f4eb; }
+.transferBadges > [data-state="closed"] { color: #8a3445; background: #fce8eb; }
 .gapQuoteValue b { color: #106b56; font-size: .97rem; }
 .gapRouteAction {
   display: block;
