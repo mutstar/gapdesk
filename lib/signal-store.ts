@@ -117,7 +117,7 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
     const left="substr(route_id,1,instr(route_id,':')-1)";
     const rightLeg="substr(route_id,instr(route_id,'|')+1)";
     const right=`substr(${rightLeg},1,instr(${rightLeg},':')-1)`;
-    const cex="('bitget','kucoin','binance','bithumb')";
+    const cex="('bitget','kucoin','binance','bithumb','gate')";
     if(family==='DEX–DEX')clauses.push(`${left}='dex' AND ${right}='dex'`);
     if(family==='CEX–CEX')clauses.push(`${left} IN ${cex} AND ${right} IN ${cex}`);
     if(family==='DEX–CEX')clauses.push(`((${left}='dex' AND ${right} IN ${cex}) OR (${right}='dex' AND ${left} IN ${cex}))`);

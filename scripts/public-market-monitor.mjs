@@ -8,13 +8,15 @@ import {gzipSync} from 'node:zlib';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {poolValuationAssets} from '../lib/pool-anchors.mjs';
 import {prepareScan} from '../lib/universe.mjs';
-import {readIndexedPools} from '../lib/indexed-pools.mjs';
+import {createIndexedPoolReader,readIndexedPools} from '../lib/indexed-pools.mjs';
+import {recentV4Pools} from '../lib/v4-discovery.mjs';
 import {poolType,readPools} from '../lib/pool-reader.mjs';
 import {startFactoryRegistry} from '../lib/factory-registry.mjs';
 import {startRegistry} from '../lib/pool-registry.mjs';
 
 const site = new URL('https://dokdo-gapdesk.awakeant23.chatgpt.site');
 const interval = 30_000;
+const readNewPools=createIndexedPoolReader({intervalMs:500});
 let service = '';
 for await (const part of process.stdin) service += part.toString();
 service = service.trim();
@@ -105,14 +107,16 @@ async function tick(slot) {
     const remaining = slot + interval - Date.now() - 2300;
     const options = {onMarkets,timeoutMs:Math.max(1,Math.min(24000,remaining))};
     const indexedEntries = index.entries.filter(p => !poolType(p) || retryWithIndex.has(poolKey(p)));
-    const [chain, indexed] = await Promise.all([
+    const [chain, indexed, newPools] = await Promise.all([
       readPools(entries, valuation, {...options,anchorMaxAgeMs:45000}),
       readIndexedPools(indexedEntries, valuation, options),
+      recentV4Pools(valuation).then(pools=>readNewPools(pools,valuation,{...options,timeoutMs:Math.max(1,Math.min(3500,slot+interval-Date.now()-2300))})),
     ]);
     allowDetails = indexed.coverage.every(c => c.attempted === c.registered && !c.error) && chain.coverage.every(c => c.attempted === c.supported);
     const chainPriced = new Set(chain.markets.map(poolKey));
     retryWithIndex = new Set(entries.filter(p => poolType(p) && !chainPriced.has(poolKey(p))).map(poolKey));
     const combined = new Map(indexed.markets.map(p => [poolKey(p), p]));
+    for(const p of newPools.markets)if(!(combined.get(poolKey(p))?.time>=p.time))combined.set(poolKey(p),p);
     for (const p of chain.markets) combined.set(poolKey(p), p);
     return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};

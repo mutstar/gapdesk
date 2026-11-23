@@ -30,10 +30,10 @@ function GapRow({r}:{r:Row}){
   </article>
 }
 function SpikeRow({r}:{r:Row}){
-  const up=r.side==='up';
-  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {up?'매도가 급등':'매수가 급락'} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
+  const up=r.side==='up', poolMark=r.venue?.startsWith('Uniswap V4 ·');
+  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
     <div className="signalRoute">{r.venue} · {windowText(r.windowSec)} 구간</div>
-    <div className="signalNumbers"><span>{up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} USDC</b></span></div>
+    <div className="signalNumbers"><span>{poolMark?'기준 풀 가격':up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{poolMark?'감지 풀 가격':up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} USDC</b></span></div>
     <p>기준 {kst(r.baselineAt)} KST · {r.corroborated?'타 거래소 시세 대조됨':'단일 거래소 관측'}</p></article>
 }
 function Earlier({symbol,before}:{symbol:string,before:number}){
@@ -70,7 +70,7 @@ export function SignalHistory({kind,revision}:Props){
     {gaps&&<MarketTabs family={family} product={market} onChange={(f,m)=>{setFamily(f);setMarket(m);first()}}/>}
     <div className="signalFilters"><label><Search size={14}/> 토큰<input type="search" placeholder="예: ACE" value={symbol} onChange={e=>{setSymbol(e.target.value);first()}}/></label>
     <label>기간<select value={hours} onChange={e=>{setHours(Number(e.target.value));first()}}>{[[1,'1시간'],[6,'6시간'],[24,'24시간'],[168,'7일']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
-    <label>거래소<input list="signal-venues" placeholder="전체 · 이름 입력" value={venue} onChange={e=>{setVenue(e.target.value);first()}}/><datalist id="signal-venues">{['빗썸','KuCoin','Bitget','Binance 선물','KuCoin 선물','Bitget 선물','uniswap · Ethereum','pancakeswap · BNB Chain','uniswap · Base','uniswap · Arbitrum'].map(v=><option key={v} value={v}/>)}</datalist></label></div>
+    <label>거래소<input list="signal-venues" placeholder="전체 · 이름 입력" value={venue} onChange={e=>{setVenue(e.target.value);first()}}/><datalist id="signal-venues">{['빗썸','KuCoin','Bitget','Gate.io','Uniswap V4 · BNB Chain','Binance 선물','KuCoin 선물','Bitget 선물','uniswap · Ethereum','pancakeswap · BNB Chain','uniswap · Base','uniswap · Arbitrum'].map(v=><option key={v} value={v}/>)}</datalist></label></div>
     {gaps&&<label className="rawHistory"><input type="checkbox" checked={raw} onChange={e=>{setRaw(e.target.checked);first()}}/> 전체 관측 기록 보기</label>}
     {error&&<div role="alert" className="signalEmpty">기록을 불러오지 못했어요. <button onClick={()=>setRetry(n=>n+1)}>다시 조회</button></div>}
     {data?.items.map(r=>gaps?<GapRow key={r.id} r={r}/>:<SpikeRow key={r.id} r={r}/>)}

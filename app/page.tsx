@@ -17,6 +17,7 @@ import {chainName,checkTx,connect,publicBalances,sendStep,steps} from '../lib/wa
 type Row=Record<string,any>;
 function venuePage(row:Row,buy:boolean){
  const venue=buy?row.buy:row.sell,pair=buy?row.buyPair:row.sellPair;
+ if(venue==='Gate.io')return 'https://www.gate.com/trade/'+encodeURIComponent(pair);
  return venue==='KuCoin'?'https://www.kucoin.com/trade/'+encodeURIComponent(pair||'ETH-USDC'):'https://www.bitget.com/spot/'+encodeURIComponent(pair||'ETHUSDC');
 }
 const chains:Record<string,{name:string,gas:string,explorer:string}>=CHAINS;
