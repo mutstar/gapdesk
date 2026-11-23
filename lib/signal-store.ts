@@ -47,7 +47,7 @@ export async function logSignals(scan:Row,connection?:D1Database){
        (id,route_id,entry_cycle,symbol,buy,sell,opened_at,last_seen,state,entry_gap,latest_gap,entry_ask,entry_bid,latest_ask,latest_bid,budget,floor,max_impact,status,reason)
        SELECT json_array(?,v->>'$.id'),v->>'$.id',?,v->>'$.symbol',v->>'$.buy',v->>'$.sell',?,?,'active',
        v->>'$.gap',v->>'$.gap',v->>'$.ask',v->>'$.bid',v->>'$.ask',v->>'$.bid',?,?,?,
-       CASE WHEN v->>'$.blocked' IS NULL THEN 'unchecked' ELSE 'blocked' END,v->>'$.blocked'
+       CASE WHEN v->>'$.basis' IN ('perp_spot','perp_perp') THEN v->>'$.basis' WHEN v->>'$.blocked' IS NULL THEN 'unchecked' ELSE 'blocked' END,COALESCE(v->>'$.blocked',v->>'$.reason')
        FROM (SELECT value AS v FROM json_each(?)) WHERE ?>${clock}
        ON CONFLICT(route_id) WHERE closed_at IS NULL DO UPDATE SET
        latest_gap=excluded.latest_gap,latest_ask=excluded.latest_ask,latest_bid=excluded.latest_bid,last_seen=excluded.last_seen`,
@@ -88,8 +88,8 @@ export class InvalidSignalQuery extends Error {}
 export async function signalHistory(params:URLSearchParams,connection?:D1Database,now=Date.now()){
   const kind=params.get('kind')??'gaps',hours=Number(params.get('hours')??24);
   const symbol=(params.get('symbol')??'').trim().toUpperCase(),venue=(params.get('venue')??'').trim();
-  const limit=Number(params.get('limit')??50);
-  if(!['gaps','spikes'].includes(kind)||!Number.isInteger(hours)||hours<1||hours>168||
+  const limit=Number(params.get('limit')??50),market=params.get('market')||'all';
+  if(!['all','spot','perp_spot','perp_perp'].includes(market)||!['gaps','spikes'].includes(kind)||!Number.isInteger(hours)||hours<1||hours>168||
     !Number.isInteger(limit)||limit<1||limit>100||symbol.length>150||venue.length>300)throw new InvalidSignalQuery();
   const db=connection??await storage(),gaps=kind==='gaps',time=gaps?'opened_at':'at',source=gaps?'gap_episodes':'venue_spikes';
   const clauses=[time+'>=?',time+'<=?'],bindings:(string|number)[]=[];
@@ -99,11 +99,13 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
     try{
       if(cursor.length>4500)throw Error();
       const [a,t,id,filter]=JSON.parse(cursor);
-      if(!integer(a)||a>now+5000||!integer(t)||t>a||t<a-hours*3600000||!str(id,2200)||filter!==JSON.stringify([kind,hours,symbol,venue]))throw Error();
+      if(!integer(a)||a>now+5000||!integer(t)||t>a||t<a-hours*3600000||!str(id,2200)||filter!==JSON.stringify(market==='all'?[kind,hours,symbol,venue]:[kind,hours,symbol,venue,market]))throw Error();
       anchor=a;clauses.push('('+time+',id)<(?,?)');bindings.push(t,id);
     }catch{throw new InvalidSignalQuery()}
   }
   bindings.unshift(anchor-hours*3600000,anchor);
+  if(gaps&&market==='spot')clauses.push("status NOT IN ('perp_spot','perp_perp')");
+  if(gaps&&market.startsWith('perp_')){clauses.push('status=?');bindings.push(market)}
   if(symbol){clauses.push('symbol=?');bindings.push(symbol)}
   if(venue){clauses.push(gaps?'(buy=? OR sell=?)':'venue=?');bindings.push(venue);if(gaps)bindings.push(venue)}
   const query=db.prepare(`SELECT ${gaps?gapFields:spikeFields} FROM ${source} WHERE ${clauses.join(' AND ')}
@@ -116,6 +118,6 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
     if(gaps&&r.state==='active'&&(!asOf||now-asOf>90000))r.state='interrupted';
     if(!gaps)r.corroborated=!!r.corroborated;
   }
-  const last=items.at(-1),nextCursor=raw.length>limit&&last?JSON.stringify([anchor,last[gaps?'openedAt':'at'],last.id,JSON.stringify([kind,hours,symbol,venue])]):null;
+  const last=items.at(-1),nextCursor=raw.length>limit&&last?JSON.stringify([anchor,last[gaps?'openedAt':'at'],last.id,JSON.stringify(market==='all'?[kind,hours,symbol,venue]:[kind,hours,symbol,venue,market])]):null;
   return {items,nextCursor,asOf,historyStartedAt};
 }

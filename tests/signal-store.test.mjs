@@ -70,3 +70,13 @@ test('venue spikes are idempotent, date paginated and filtered by symbol and ven
   await assert.rejects(history({...q,venue:'KuCoin',cursor:a.nextCursor}),InvalidSignalQuery);
   await assert.rejects(history({hours:'999'}),InvalidSignalQuery);
 });
+
+test('futures records retain entry type and cannot be promoted by spot verification',async t=>{
+  const {log,history}=setup(t);
+  const row={...gap,id:'kucoin:perp:ACEUSDTM|bitget:ACE',basis:'perp_spot',reason:'현물 보유 또는 차입 필요'};
+  await log(frame(0,{signalGaps:[row,gap],entryChecks:[{id:row.id,cycle:start,checkedAt:start+6000,status:'passed',profit:90}]}));
+  const result=await history({market:'perp_spot'});
+  assert.deepEqual(result.items.map(x=>[x.status,x.reason,x.profit]),[['perp_spot',row.reason,null]]);
+  assert.equal((await history({market:'spot'})).items.length,1);
+  assert.equal((await history({market:'perp_perp'})).items.length,0);
+});
