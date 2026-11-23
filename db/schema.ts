@@ -1,4 +1,3 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
-export {};
+import {sqliteTable,text,integer,real} from 'drizzle-orm/sqlite-core';
+export const scanState=sqliteTable('scan_state',{id:text('id').primaryKey(),value:text('value').notNull()});
+export const detections=sqliteTable('detections',{id:text('id').primaryKey(),symbol:text('symbol').notNull(),buy:text('buy').notNull(),sell:text('sell').notNull(),gap:real('gap').notNull(),seen:integer('seen').notNull(),kind:text('kind').notNull()});
