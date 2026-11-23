@@ -214,3 +214,24 @@
 @media(max-width:610px){.blockedRoutes,.gapReasonSummary{margin:.65rem .75rem;padding:.65rem .7rem}}
 
 .feeds>summary{cursor:pointer;color:var(--ink);font-weight:600;padding:12px 16px}.tokenPrevious .gapValue,.tokenPrevious .tradePair{opacity:.62}
+
+.marketChain{display:inline-flex;align-items:center;align-self:flex-start;flex-wrap:wrap;gap:3px 5px;max-width:100%;color:#294a67;font-size:.78rem;font-weight:650;line-height:1.35}
+.marketChain svg,.chainRole{color:#526c81}.chainRole{font-weight:500}
+.tradeLeg .marketChain{margin:3px 0 1px}
+.titleLine{margin-bottom:12px}.titleLine h1{font-size:clamp(1.5rem,2.4vw,2rem)}
+.scanSummary dl{padding-block:12px}.scanSummary dd{font-size:clamp(1.18rem,2vw,1.65rem)}
+@media(min-width:1000px){
+  .workspace{grid-template-columns:minmax(206px,245px) minmax(0,1fr);gap:18px;align-items:start}
+  .workspace>.board{grid-column:2;grid-row:1;min-width:0}
+  .workspace>.controls{grid-column:1;grid-row:1}
+}
+@media(max-width:610px){
+  .scanSummary dl{padding-block:7px;gap:2px}
+  .scanSummary dd{font-size:1rem}
+}
+
+@media(min-width:360px) and (max-width:610px){
+  .basisFilters.gapSearch{display:grid;grid-template-columns:minmax(0,1fr) 5rem 7rem;gap:6px}
+  .basisFilters.gapSearch>label:first-child{grid-column:auto}
+  .basisFilters.gapSearch input,.basisFilters.gapSearch select{max-width:100%;min-width:0;min-height:38px}
+}

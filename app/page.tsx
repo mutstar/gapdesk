@@ -44,8 +44,8 @@ async function scan(amount:number,floor:number,maxImpact:number,address='',only=
 }
 function QualifiedPair({r,now}:{r:Row,now:number}){
  return <div className="tradePair">
-   <TradeLeg side="buy" venue={r.buy} kind={r.buyKind} transfer={r.buyTransfer} now={now} caption={r.buyPair||chainName(r.from)}><span className="legTotal">투입 {format(r.budget)} USDC</span></TradeLeg>
-   <TradeLeg side="sell" venue={r.sell} kind={r.sellKind} transfer={r.sellTransfer} now={now} caption={r.sellPair||chainName(r.to)}><span className="legTotal">예상 수령 {format(r.proceeds)} USDC</span></TradeLeg>
+   <TradeLeg side="buy" chain={r.from} venue={r.buy} kind={r.buyKind} transfer={r.buyTransfer} now={now} caption={r.buyPair}><span className="legTotal">투입 {format(r.budget)} USDC</span></TradeLeg>
+   <TradeLeg side="sell" chain={r.to} venue={r.sell} kind={r.sellKind} transfer={r.sellTransfer} now={now} caption={r.sellPair}><span className="legTotal">예상 수령 {format(r.proceeds)} USDC</span></TradeLeg>
  </div>;
 }
 export default function Home(){
@@ -133,11 +133,11 @@ export default function Home(){
  finally{lock.current=false;setActing(false)}
  }
  return <><header className="mast"><div className="mastInner"><a href="/" className="brand"><i className="mark"><b/><b/><b/></i>Gapdesk</a><nav aria-label="주 메뉴">{['갭 탐색','전체 토큰','먹을 수 있는 갭','신규 갭','거래소별 급등락'].map((n,i)=><button key={n} aria-pressed={view===n} className={view===n?'navOn':''} onClick={()=>setView(n)}>{[<Activity key="a" size={17}/>,<Layers key="b" size={16}/>,<Network key="e" size={16}/>,<Clock3 key="c" size={16}/>,<Radio key="d" size={16}/>][i]} {n}</button>)}</nav><button className="wallet" onClick={()=>{setNote('');showWallet(true)}}><Wallet size={16}/>{address?address.slice(0,6)+'…'+address.slice(-4):'지갑 연결'}</button></div></header>
- <main><div className="titleLine"><div><div className="overline"><span className="liveDot"/> {exploring?'CEX · DEX 현물 및 무기한 선물':'CEX · DEX'}</div><h1>{view}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}화면 갱신 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
+ <main><div className="titleLine"><div><h1>{view}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}화면 갱신 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
  <section className="scanSummary" aria-label="스캔 현황">
    <dl>
-     <div><dt><Radio size={16}/>감시 항목 · 체인별 토큰</dt><dd>{snapshot?.tokens?.length?.toLocaleString()??'—'}<small>개</small></dd></div>
-     <div><dt><Network size={16}/>{exploring?'비교한 현물·선물 경로':'비교한 경로'}</dt><dd>{(exploring&&snapshot?snapshot.checked+(snapshot.futures?.compared??0):snapshot?.checked)?.toLocaleString()??'—'}<small>개</small></dd></div>
+     <div><dt><Radio size={16}/>체인별 토큰</dt><dd>{snapshot?.tokens?.length?.toLocaleString()??'—'}<small>개</small></dd></div>
+     <div><dt><Network size={16}/>비교 경로</dt><dd>{(exploring&&snapshot?snapshot.checked+(snapshot.futures?.compared??0):snapshot?.checked)?.toLocaleString()??'—'}<small>개</small></dd></div>
      <div><dt><ShieldCheck size={16}/>현물 조건 충족 갭</dt><dd className="qual">{snapshot?qualified.length.toLocaleString():'—'}<small>건</small></dd></div>
    </dl>
    <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>

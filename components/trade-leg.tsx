@@ -1,3 +1,4 @@
+import {MarketChain,venueLabel} from './market-chain';
 import type {ReactNode} from 'react';
 import {isFreshQuoteAt} from '../lib/quote-freshness.mjs';
 
@@ -17,6 +18,7 @@ export function TransferBadges({kind,status,side,now}:TransferProps){
 type Props={
   side:'buy'|'sell';
   venue?:string;
+  chain?:number|string|null;
   perp?:boolean;
   kind?:string;
   transfer?:TransferStatus|null;
@@ -26,13 +28,14 @@ type Props={
   children?:ReactNode;
 };
 const priceFormat=new Intl.NumberFormat('en-US',{maximumSignificantDigits:7});
-export function TradeLeg({side,venue,perp,kind,transfer,now=0,price,caption,children}:Props){
+export function TradeLeg({side,venue,chain,perp,kind,transfer,now=0,price,caption,children}:Props){
   const buy=side==='buy';
   const action=perp?(buy?'롱 진입':'숏 진입'):(buy?'사는 곳':'파는 곳');
   const hasPrice=typeof price==='number'&&Number.isFinite(price)&&price>0;
   return <div className={'tradeLeg '+side}>
     <div className="legAction">{action}</div>
-    <strong className="legVenue">{venue||'거래소 미확인'}</strong>
+    <strong className="legVenue">{venueLabel(venue,chain)||'거래소 미확인'}</strong>
+    <MarketChain chain={chain} kind={kind} perp={perp}/>
     {price!==undefined&&<div className="legPrice">{hasPrice?<>{priceFormat.format(price)} <small>USDC</small></>:'시세 대기'}</div>}
     {caption&&<small className="legCaption">{caption}</small>}
     <TransferBadges kind={kind} status={transfer} side={side} now={now}/>

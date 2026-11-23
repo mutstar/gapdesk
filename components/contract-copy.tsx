@@ -5,7 +5,7 @@ import {NATIVE} from '../lib/assets.js';
 import {chainTitle,shortCA} from '../lib/token-contracts.mjs';
 
 export type Contract={chain:number|string,token:string,group?:number,venues?:string[]};
-export function ContractCopy({item}:{item:Contract}){
+export function ContractCopy({item,compact=false}:{item:Contract,compact?:boolean}){
   const [state,setState]=useState(''),timer=useRef<ReturnType<typeof setTimeout>|null>(null);
   useEffect(()=>()=>{if(timer.current)clearTimeout(timer.current)},[]);
   const name=chainTitle(item.chain);
@@ -18,6 +18,6 @@ export function ContractCopy({item}:{item:Contract}){
     timer.current=setTimeout(()=>setState(''),manual?15000:2200);
   }
   return <span className="caWrap"><button type="button" className="caCopy" onClick={copy} title={name+' · '+item.token}
-    aria-label={name+' '+item.token+' CA 복사'}><span>{name}</span><code>{shortCA(item.token)}</code>{state==='copied'?<Check size={13}/>:<Copy size={13}/>}</button>
+    aria-label={name+' '+item.token+' CA 복사'}><span>{compact?'CA':name}</span><code>{shortCA(item.token)}</code>{state==='copied'?<Check size={13}/>:<Copy size={13}/>}</button>
     {state==='copied'&&<small role="status">복사됨</small>}{state==='manual'&&<input aria-label="선택해서 복사할 주소" readOnly value={item.token} autoFocus onFocus={e=>e.target.select()}/>}</span>
 }

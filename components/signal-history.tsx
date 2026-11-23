@@ -19,8 +19,8 @@ function GapRow({r}:{r:Row}){
     <div className="signalHead"><strong>{r.symbol}</strong><span className={'verdict '+r.status}>{verdict[r.status]||'미확인'}</span><time>{kst(r.openedAt)} KST 최초 감지</time></div>
     <ContractCopy item={{chain:r.chain,token:r.token}}/>
     <div className="tradePair">
-      <TradeLeg side="buy" venue={r.buy} perp={r.status.startsWith('perp_')&&r.buy.endsWith(' 선물')} price={r.entryAsk} caption="최초 감지 가격"/>
-      <TradeLeg side="sell" venue={r.sell} perp={r.status.startsWith('perp_')&&r.sell.endsWith(' 선물')} price={r.entryBid} caption="최초 감지 가격"/>
+      <TradeLeg side="buy" chain={r.chain} venue={r.buy} perp={r.status.startsWith('perp_')&&r.buy.endsWith(' 선물')} price={r.entryAsk} caption="최초 감지 가격"/>
+      <TradeLeg side="sell" chain={r.chain} venue={r.sell} perp={r.status.startsWith('perp_')&&r.sell.endsWith(' 선물')} price={r.entryBid} caption="최초 감지 가격"/>
     </div>
     <div className="signalNumbers"><span>최초 갭 <b>+{display(r.entryGap)}%</b></span><span>{active?'최근 갭':'마지막 관측 갭'} <b>+{display(r.latestGap)}%</b></span>
     {r.status==='passed'&&<span>당시 예상 순차익 <b>+{display(r.profit,4)} USDC</b></span>}</div>

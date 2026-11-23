@@ -76,8 +76,8 @@ export function TokenUniverse({tokens,busy,at,budget,floor,address,now,verified}
    return <article className={'marketCard'+(t.previous?' tokenPrevious':'')} key={t.asset}>
      <header className="marketCardHead"><h3>{t.symbol}</h3><div className="gapValue"><span>관찰 갭</span><strong>{t.gap==null?'—':num(t.gap)+'%'}</strong></div></header>
      {t.gap!=null&&<div className="tradePair">
-       <TradeLeg side="buy" venue={t.buy} kind={t.buyKind} transfer={t.buyTransfer} now={now} price={t.ask??null} caption={t.buyImpact!=null?'풀 기준가 대비 '+Number(t.buyImpact).toFixed(2)+'% 불리':undefined}/>
-       <TradeLeg side="sell" venue={t.sell} kind={t.sellKind} transfer={t.sellTransfer} now={now} price={t.bid??null} caption={t.sellImpact!=null?'풀 기준가 대비 '+Number(t.sellImpact).toFixed(2)+'% 불리':undefined}/>
+       <TradeLeg side="buy" chain={row?.from??primary?.chain} venue={t.buy} kind={t.buyKind} transfer={t.buyTransfer} now={now} price={t.ask??null} caption={t.buyImpact!=null?'풀 기준가 대비 '+Number(t.buyImpact).toFixed(2)+'% 불리':undefined}/>
+       <TradeLeg side="sell" chain={row?.to??primary?.chain} venue={t.sell} kind={t.sellKind} transfer={t.sellTransfer} now={now} price={t.bid??null} caption={t.sellImpact!=null?'풀 기준가 대비 '+Number(t.sellImpact).toFixed(2)+'% 불리':undefined}/>
      </div>}
      <div className="marketTools"><span className="marketState">{t.gap!=null&&t.time>0?(t.previous?'직전 ':'')+new Date(t.time).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})+' KST':''}</span><div className="marketActions">
      {primary?<ContractCopy item={primary}/>:<small>CA 미확인</small>}
