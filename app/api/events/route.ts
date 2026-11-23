@@ -1,2 +1,2 @@
 import {history} from '../../../lib/scan-store';
-export async function GET(req:Request){try{return Response.json(await history(new URL(req.url).searchParams.get('symbol')||''),{headers:{'Cache-Control':'no-store'}})}catch{return Response.json([],{status:503})}}
+export async function GET(req:Request){try{const p=new URL(req.url).searchParams;return Response.json(await history(p.get('symbol')||'',p.get('screened')==='1'),{headers:{'Cache-Control':'no-store'}})}catch{return Response.json([],{status:503})}}

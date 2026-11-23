@@ -80,3 +80,14 @@ test('futures records retain entry type and cannot be promoted by spot verificat
   assert.equal((await history({market:'spot'})).items.length,1);
   assert.equal((await history({market:'perp_perp'})).items.length,0);
 });
+
+test('screened history stops a direct route on closure and raw mode preserves its diagnosis',async t=>{
+  const {log,history}=setup(t);
+  const open={...gap,reason:'동일 네트워크 이동 경로 확인'};
+  await log(frame(0,{signalGaps:[open]}));
+  await log(frame(1,{signalGaps:[{...gap,blocked:'매도처 입금 중단'}]}));
+  assert.deepEqual((await history({screened:'1'},frame(1).at)).items.map(r=>r.state),['closed']);
+  assert.equal((await history({},frame(1).at)).items[0].status,'blocked');
+  await log(frame(2,{signalGaps:[open]}));
+  assert.equal((await history({screened:'1'},frame(2).at)).items[0].openedAt,frame(2).at);
+});

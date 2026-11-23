@@ -53,3 +53,22 @@ test('cross-chain non-native asset uses exact token, decimals and route quote at
  const unavailable={...io,quote:async(a,z)=>{if(a!==z)throw Error('no bridge');return {fromDecimals:6,toDecimals:6,minimum:'100000000',tool:'dex',gas:0,duration:0}}};
  assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},unavailable),null);
 });
+
+test('RAIN namesakes on the same chain never form a spread even with deposits open',()=>{
+ const buy=cex('KuCoin',.00327,[net(42161,token)]),sell=cex('Bitget',60.96,[net(42161,other)]);
+ const {summaries:[row],candidates}=discover([buy,sell],1000,1);
+ assert.equal(row.gap,null);assert.equal(row.buy,'');assert.equal(row.sell,'');
+ assert.match(row.status,/컨트랙트 불일치/);assert.equal(candidates.length,0);
+});
+test('selects the next valid pair when an extreme venue cannot receive or send on the matching network',()=>{
+ const buy=cex('cheap',1,[net()]),safe=cex('open',1.05,[net()]);
+ const halted=cex('closed',60,[{...net(),deposit:false,depositOpen:false},net(56,other)]);
+ const row=discover([buy,halted,safe],1000,1).summaries[0];
+ assert.equal(row.buy,'cheap');assert.equal(row.sell,'open');assert.ok(Math.abs(row.gap-5)<1e-7);
+ const blocked=discover([buy,halted],1000,1).summaries[0];
+ assert.equal(blocked.gap,null);assert.match(blocked.status,/공통 네트워크 입금 중단/);
+ assert.equal(discover([{...buy,networks:[{...net(),withdraw:false}]},safe],1000,1).summaries[0].gap,null);
+ assert.equal(discover([buy,{...safe,networks:[{...net(),deposit:null}]}],1000,1).summaries[0].gap,null);
+ assert.equal(discover([buy,{...safe,networkTime:Date.now()-46000}],1000,1).summaries[0].gap,null);
+ assert.equal(discover([buy,{...safe,networks:[{...net(),minIn:2000}]}],1000,1).summaries[0].gap,null);
+});

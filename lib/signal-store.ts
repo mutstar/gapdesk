@@ -43,6 +43,13 @@ export async function logSignals(scan:Row,connection?:D1Database){
     AND (?-last_seen>? OR budget<>? OR floor<>? OR max_impact<>? OR ?-${clock}>?)`,
     seen,cycle,seen,MAX_GAP_MS+15000,scan.budget,scan.floor,scan.maxImpact,cycle,MAX_GAP_MS);
   for(const chunk of chunks(gaps,120)){
+    // A closure or reopening starts a new observation even if both book prices persist.
+    sql(`WITH incoming AS (SELECT value->>'$.id' AS route,
+       COALESCE(value->>'$.blocked',value->>'$.reason') AS reason FROM json_each(?))
+       UPDATE gap_episodes SET closed_at=?,state='closed'
+       WHERE closed_at IS NULL AND ?>${clock} AND route_id IN (SELECT route FROM incoming)
+       AND reason IS NOT (SELECT reason FROM incoming WHERE route=route_id)`,
+       JSON.stringify(chunk),seen,cycle);
     sql(`INSERT INTO gap_episodes
        (id,route_id,entry_cycle,symbol,buy,sell,opened_at,last_seen,state,entry_gap,latest_gap,entry_ask,entry_bid,latest_ask,latest_bid,budget,floor,max_impact,status,reason)
        SELECT json_array(?,v->>'$.id'),v->>'$.id',?,v->>'$.symbol',v->>'$.buy',v->>'$.sell',?,?,'active',
@@ -94,12 +101,15 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
   const db=connection??await storage(),gaps=kind==='gaps',time=gaps?'opened_at':'at',source=gaps?'gap_episodes':'venue_spikes';
   const clauses=[time+'>=?',time+'<=?'],bindings:(string|number)[]=[];
   const cursor=params.get('cursor');
+  const screened=gaps&&params.get('screened')==='1';
+  const filterKey=JSON.stringify([kind,hours,symbol,venue,...(market==='all'?[]:[market]),...(screened?['screened']:[])]);
+  if(screened)clauses.push("(status IN ('passed','perp_spot','perp_perp') OR reason='동일 네트워크 이동 경로 확인')");
   let anchor=now;
   if(cursor){
     try{
       if(cursor.length>4500)throw Error();
       const [a,t,id,filter]=JSON.parse(cursor);
-      if(!integer(a)||a>now+5000||!integer(t)||t>a||t<a-hours*3600000||!str(id,2200)||filter!==JSON.stringify(market==='all'?[kind,hours,symbol,venue]:[kind,hours,symbol,venue,market]))throw Error();
+      if(!integer(a)||a>now+5000||!integer(t)||t>a||t<a-hours*3600000||!str(id,2200)||filter!==filterKey)throw Error();
       anchor=a;clauses.push('('+time+',id)<(?,?)');bindings.push(t,id);
     }catch{throw new InvalidSignalQuery()}
   }
@@ -118,6 +128,6 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
     if(gaps&&r.state==='active'&&(!asOf||now-asOf>90000))r.state='interrupted';
     if(!gaps)r.corroborated=!!r.corroborated;
   }
-  const last=items.at(-1),nextCursor=raw.length>limit&&last?JSON.stringify([anchor,last[gaps?'openedAt':'at'],last.id,JSON.stringify(market==='all'?[kind,hours,symbol,venue]:[kind,hours,symbol,venue,market])]):null;
+  const last=items.at(-1),nextCursor=raw.length>limit&&last?JSON.stringify([anchor,last[gaps?'openedAt':'at'],last.id,filterKey]):null;
   return {items,nextCursor,asOf,historyStartedAt};
 }
