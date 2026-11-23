@@ -105,4 +105,6 @@ test('a sparse next frame or source fallback cannot restore executable status af
   const later=mergeFrame(failed,frame(now+5,false,[]));
   assert.deepEqual(currentQualifiedRows(updated,later,now+6),[]);
   assert.equal(currentQualifiedRows({...updated,rows:[{...updated.rows[0],verifiedAt:now+5}]},later,now+6).length,1);
+  const slow=mergeFrame(null,{...frame(now,true,[]),routeChecks:[{...checked,checkedAt:now+8000}]});
+  assert.deepEqual(currentQualifiedRows(updated,slow,now+8001),[]);
 });
