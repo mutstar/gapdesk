@@ -62,3 +62,48 @@
 .apply,.resume { color: #3e2819; }
 .coinTools,.pageBar,.scanCounts,.observations{padding:12px 22px}.coinTools,.pageBar{display:flex;align-items:center;justify-content:space-between;gap:12px}.coinTools input{width:min(310px,75%);border:1px solid #b7cee0;border-radius:7px;padding:8px 12px}.hint,.coinTools span,.pageBar,.scanCounts p,.scanCounts small{font-size:.85rem;color:#496781}.coinScroll{overflow:auto;max-height:61vh}.coinTable{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}.coinTable th{position:sticky;top:0;background:#edf5fc;color:#496780;font-size:.83rem;z-index:1}.coinTable td,.coinTable th{padding:8px 12px;border-bottom:1px solid #e3edf5}.coinTable td{font-size:.92rem}.coinTable small{display:block;color:#536f85;font-size:.78rem;overflow-wrap:anywhere}.coinEmpty{padding:20px;text-align:center}.pageBar button{background:#edf5fb;padding:5px 12px;border-radius:5px}.pageBar button:disabled{opacity:.5;cursor:default}.scanCounts,.observations{border-top:1px solid #dbe8f3}.scanCounts p,.observations p{margin:5px 0}.observations summary{cursor:pointer;font-weight:650}.logRow{display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid #edf2f6;padding:7px 0;font-size:.84rem}.logRow time{color:#546c80;margin-left:auto}.controls{align-self:start}.workspace{align-items:start}.board{min-width:0}.controls form>small{display:block;margin-top:6px;color:#365d76}
 @media(max-width:610px){.coinTable td,.coinTable th{padding:6px;font-size:.78rem}.coinTable small{font-size:.71rem}.coinTools,.pageBar,.observations,.scanCounts{padding:10px 14px}.workspace .controls{grid-row:1}.scanCounts{font-size:.8rem}.controls form>small{grid-column:1/-1}}
+
+.coinScroll {overflow-x:auto}
+.coinTable {min-width:640px}
+.coinTable th {white-space:nowrap}
+.inlineCA,.addressList,.caWrap,.caCopy,.moreCA,.bridgeAction {display:inline-flex;align-items:center}
+.inlineCA,.addressList {display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.caWrap {flex-wrap:wrap;gap:3px}
+.caCopy,.moreCA,.bridgeAction {justify-content:center;gap:4px;border:1px solid #b9d2e3;background:#fff;border-radius:6px;color:#245578;line-height:1.35}
+.caCopy,.moreCA {min-height:26px;padding:3px 5px;font-size:.72rem}
+.caCopy span {font-weight:600}
+.caCopy code {font-size:.7rem;color:#406079}
+.caWrap input {max-width:15rem;width:100%}
+.caCopy:hover,.moreCA:hover,.bridgeAction:hover {background:#e9f5ff;border-color:#79aac8}
+.nativeCA {font-size:.75rem;color:#506f84}
+.bridgeAction {padding:5px 9px;font-size:.81rem;white-space:nowrap}
+.coinTable td.assetDetailCell {background:#f2f8fd;text-align:left;white-space:normal;padding:12px 16px}
+.assetDetail,.bridgeBox {display:grid;gap:10px}
+.assetDetail strong {font-size:.88rem}.assetDetail p {margin:0;color:#4c6781}
+.bridgeBox {border-top:1px solid #cddfec;padding-top:9px}
+.bridgeBox strong small {display:inline;font-weight:400;margin-left:6px}
+.bridgeFields {display:flex;align-items:end;flex-wrap:wrap;gap:8px}
+.bridgeFields>svg {align-self:center}
+.bridgeFields label {display:grid;gap:3px;font-size:.75rem;color:#49627b}
+.bridgeFields select {max-width:18rem;padding:5px;color:#1c405a;border:1px solid #b9d2e3;background:white;border-radius:5px}
+.bridgeResult {font-size:.86rem;color:#385a72}
+.bridgeResult b {color:#146746}
+@media(max-width:610px){.coinTable{min-width:610px}.coinTable td.assetDetailCell{padding:10px}.assetDetail{max-width:calc(100vw - 60px)}.bridgeFields label{max-width:100%}}
+
+.contractOption {display:grid;justify-items:start;align-content:start;gap:2px}
+.addressList {gap:8px}
+@media(max-width:610px){
+ .coinScroll {overflow-x:hidden}
+ .coinTable,.coinTable tbody {display:block;width:100%;min-width:0}
+ .coinTable thead {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+ .coinTable tbody>tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:8px;padding:12px 14px;border-bottom:1px solid #dbe8f3}
+ .coinTable tbody>tr>td {border:0;padding:0;min-width:0}
+ .coinTable td:first-child {grid-column:1/3}
+ .coinTable td:nth-child(5) {grid-column:3;grid-row:1;justify-self:end}
+ .coinTable td[data-label]::before {content:attr(data-label);display:block;font-size:.7rem;color:#597186}
+ .coinTable .detailRow {background:#f2f8fd}
+ .coinTable .detailRow td:first-child {grid-column:1/-1}
+ .assetDetail {max-width:100%}
+}
+
+.routeCAs {display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 10px}.routeCAs:empty {display:none}
