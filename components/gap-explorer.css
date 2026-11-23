@@ -2,6 +2,38 @@
   container: gapquotes / inline-size;
   margin: 0 20px 18px;
 }
+.marketSort {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #405a70;
+  font-size: .85rem;
+  font-weight: 600;
+}
+.marketSort select {
+  min-height: 37px;
+  max-width: 100%;
+  border: 1px solid #b7cee0;
+  border-radius: 6px;
+  padding: 4px 6px;
+  background: #fff;
+  color: #19334f;
+  font: inherit;
+}
+.gapSearch .marketSort { margin-left: auto; }
+.coinTools.tokenSearch { justify-content: flex-start; }
+.tokenSearch .marketSort { flex-direction: row; align-items: center; margin-left: auto; }
+@media (max-width: 620px) {
+  .basisFilters.gapSearch {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  }
+  .gapSearch > label:first-child { grid-column: 1 / -1; }
+  .gapSearch > label:first-child input { max-width: none; }
+  .gapSearch .marketSort { margin-left: 0; }
+  .coinTools.tokenSearch { flex-wrap: wrap; }
+  .coinTools.tokenSearch input { flex: 1 1 60%; min-width: 0; }
+}
 .gapQuoteList table {
   width: 100%;
   border-collapse: collapse;

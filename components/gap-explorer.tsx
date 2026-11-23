@@ -2,6 +2,7 @@
 import {useState} from 'react';
 import {ContractCopy,type Contract} from './contract-copy';
 import {MarketTabs} from './market-tabs';
+import {MarketSort,compareMarkets,useMarketOrder} from './market-sort';
 import {MarketArrivals} from './market-arrivals';
 import {TransferBadges,type TransferStatus} from './trade-leg';
 import {strictContractKey} from '../lib/contract-identity.mjs';
@@ -30,6 +31,7 @@ function QuoteLeg({leg,price,side,now}:{leg:Leg,price:number,side:'buy'|'sell',n
 export function GapExplorer({snapshot,observations,waiting,now,budget,busy,error,verified,onOpen}:Props){
   const [family,setFamily]=useState('전체'),[type,setType]=useState('all');
   const [search,setSearch]=useState(''),[min,setMin]=useState('0'),[limit,setLimit]=useState(10);
+  const [order,setOrder]=useMarketOrder('explorer');
   const query=search.trim(),floor=Math.max(0,Number(min)||0);
   const state=observations?.frame?.budget===budget?observations:snapshot?.budget===budget?{frame:{...snapshot,complete:true}}:null;
   const observed=displayedObservations(state,now,waiting) as Quote[];
@@ -39,7 +41,7 @@ export function GapExplorer({snapshot,observations,waiting,now,budget,busy,error
     const queryMatches=!query||row.symbol.toUpperCase().includes(query.toUpperCase())||
       strictContractKey({chain:row.match.chain,token:query})===strictContractKey(row.match);
     return familyMatches&&productMatches&&row.gap>=floor&&queryMatches;
-  });
+  }).sort(compareMarkets(order));
   const exactRoutes=new Map<string,Data>();
   for(const route of verified){
     const ca=strictContractKey(route.match);
@@ -50,7 +52,8 @@ export function GapExplorer({snapshot,observations,waiting,now,budget,busy,error
     <div className="panelHead"><h2>갭 탐색</h2><span className="count">관찰 {rows.length.toLocaleString()}건</span></div>
     <MarketTabs family={family} product={type} onChange={(f,t)=>{setFamily(f);setType(t);setLimit(10)}}/>
     <div className="basisFilters gapSearch"><label>토큰 또는 CA<input type="search" placeholder="심볼 또는 주소" value={search} onChange={e=>{setSearch(e.target.value);setLimit(10)}}/></label>
-      <label>최소 갭 (%)<input type="number" min="0" step="0.1" value={min} onChange={e=>{setMin(e.target.value);setLimit(10)}}/></label></div>
+      <label>최소 갭 (%)<input type="number" min="0" step="0.1" value={min} onChange={e=>{setMin(e.target.value);setLimit(10)}}/></label>
+      <MarketSort value={order} onChange={next=>{setOrder(next);setLimit(10)}}/></div>
     {rows.length>0?<div className="gapQuoteList"><table aria-label="거래소별 관찰 갭">
       <thead><tr><th scope="col">토큰 · CA</th><th scope="col">매수처</th><th scope="col">매도처</th><th scope="col">가격 차이</th><th scope="col">관찰 시각 <small>KST</small></th></tr></thead>
       <tbody>{rows.slice(0,limit).map(row=>{

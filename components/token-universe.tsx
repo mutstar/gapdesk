@@ -3,47 +3,70 @@ import {useEffect,useMemo,useState} from 'react';
 import {ChevronDown,Route} from 'lucide-react';
 import {ContractCopy,type Contract} from './contract-copy';
 import {DISPLAY_RETENTION_MS} from '../lib/observation-window.mjs';
-import {isFreshQualified} from '../lib/quote-freshness.mjs';
+import {isFreshQualified,QUOTE_MAX_AGE_MS} from '../lib/quote-freshness.mjs';
+import {MarketSort,compareMarkets,useMarketOrder} from './market-sort';
 import {TradeLeg} from './trade-leg';
 import {TokenBridge} from './token-bridge';
 import {bridgeDestinations} from '../lib/token-contracts.mjs';
 import {strictContractKey} from '../lib/contract-identity.mjs';
 type R=Record<string,any>;
 const num=(n:number)=>n>=1e9?n.toExponential(2):n.toLocaleString('ko-KR',{maximumFractionDigits:2});
+const hasPrice=(r:R,now:number,maxAge:number)=>Number.isFinite(r.gap)&&r.time>0&&now-r.time<maxAge;
 type Props={tokens:R[],busy:boolean,at:number,budget:number,floor:number,address:string,now:number,verified:R[]};
 export function TokenUniverse({tokens,busy,at,budget,floor,address,now,verified}:Props){
  const [open,setOpen]=useState<{asset:string,lookup:boolean}|null>(null);
  function toggle(asset:string,lookup:boolean){setOpen(v=>v?.asset===asset&&v.lookup===lookup?null:{asset,lookup})}
  const [query,setQuery]=useState(''),[page,setPage]=useState(0),[events,setEvents]=useState<R[]>([]),[historyOK,setHistoryOK]=useState(true);
+ const [order,setOrder]=useMarketOrder('tokens');
  const key=query.trim().toUpperCase();
+ const alphabetic=useMemo(()=>tokens.filter(t=>!key||(t.aliases||[t.symbol]).some((name:string)=>name.includes(key))||
+   (t.match&&strictContractKey({chain:t.match.chain,token:query.trim()})===t.asset)).sort(compareMarkets('symbol')),[tokens,key,query]);
+ const assets=useMemo(()=>new Map(alphabetic.map(t=>[t.asset,t])),[alphabetic]);
+ const compare=useMemo(()=>compareMarkets(order),[order]);
+ const ranked=useMemo(()=>order==='symbol'?alphabetic:alphabetic.filter(t=>Number.isFinite(t.gap)).sort(compare),[alphabetic,order,compare]);
  const quotes=new Map<string,R>();
  for(const r of verified){
    const asset=strictContractKey({chain:r.from,token:r.fromToken});
    if(!asset||asset!==strictContractKey({chain:r.to,token:r.toToken})||asset!==strictContractKey(r.match)||r.budget!==budget||!(isFreshQualified(r,now)&&r.profit>0&&r.qty>0&&r.arrival>0&&r.proceeds>0))continue;
    const ask=r.budget/r.qty,bid=r.proceeds/r.arrival,gap=(bid/ask-1)*100;
-   if(gap>0&&gap>(quotes.get(asset)?.gap??0))quotes.set(asset,{gap,ask,bid,buy:r.buy,sell:r.sell,buyImpact:null,sellImpact:null,
+   const token=assets.get(asset);
+   if(!token||hasPrice(token,now,QUOTE_MAX_AGE_MS)&&gap<=token.gap)continue;
+   if(gap>0&&gap>(quotes.get(asset)?.gap??0))quotes.set(asset,{...token,gap,ask,bid,buy:r.buy,sell:r.sell,buyImpact:null,sellImpact:null,
      buyKind:r.buyKind,sellKind:r.sellKind,buyTransfer:r.buyTransfer,sellTransfer:r.sellTransfer,
      time:Math.min(r.buyQuoteAt,r.sellQuoteAt),previous:false,quote:r});
  }
- const matching=useMemo(()=>tokens.filter(t=>!key||(t.aliases||[t.symbol]).some((name:string)=>name.includes(key))||(t.match&&strictContractKey({chain:t.match.chain,token:query.trim()})===t.asset)),[tokens,key,query]);
- const filtered=matching.map(t=>{
-   const live=t.gap!=null&&t.time>0&&now-t.time<45000,quote=quotes.get(t.asset);
-   if(quote&&(!live||quote.gap>t.gap))return {...t,...quote};
-   if(!live&&t.gap!=null){
-     if(t.time>0&&now-t.time<DISPLAY_RETENTION_MS)return {...t,previous:true,quote:null};
-     return {...t,gap:null,quote:null};
+ // Keep the catalog's order between snapshots. Only replacement quotes need a
+ // new rank when a quote expires on the one-second screen clock.
+ let filtered=ranked;
+ if(order!=='symbol'){
+   filtered=[];
+   const replacements=[...quotes.values()].sort(compare);
+   let i=0;
+   for(const t of ranked){
+     if(quotes.has(t.asset)||!hasPrice(t,now,DISPLAY_RETENTION_MS))continue;
+     while(i<replacements.length&&compare(replacements[i],t)<0)filtered.push(replacements[i++]);
+     filtered.push(t);
    }
-   return t;
- }).sort((a,b)=>(b.gap??-1)-(a.gap??-1));
+   while(i<replacements.length)filtered.push(replacements[i++]);
+   for(const t of alphabetic)if(!quotes.has(t.asset)&&!hasPrice(t,now,DISPLAY_RETENTION_MS))filtered.push(t);
+ }
+ function displayed(t:R){
+   const quote=quotes.get(t.asset);
+   if(quote)return quote;
+   if(t.gap==null||hasPrice(t,now,QUOTE_MAX_AGE_MS))return t;
+   if(hasPrice(t,now,DISPLAY_RETENTION_MS))return {...t,previous:true,quote:null};
+   return {...t,gap:null,quote:null};
+ }
  const size=35,last=Math.max(0,Math.ceil(filtered.length/size)-1),index=Math.min(page,last);
  useEffect(()=>{let active=true;const controller=new AbortController();const t=setTimeout(async()=>{
  try{const r=await fetch('/api/events?'+new URLSearchParams({symbol:key,screened:'1'}),{signal:controller.signal,cache:'no-store'});if(!r.ok)throw Error();
  const j=await r.json();if(active){setEvents(j as R[]);setHistoryOK(true)}}catch{if(active){setEvents([]);setHistoryOK(false)}}},250);
  return()=>{active=false;clearTimeout(t);controller.abort()}},[at,key]);
  return <><div className="panelHead"><div><h2>전체 토큰</h2><p className="hint">같은 체인의 같은 CA끼리 비교해요. 매수처 출금과 매도처 입금이 확인된 경로만 갭을 표시합니다.</p></div><span className="count">{num(tokens.length)}개</span></div>
- <div className="coinTools"><input type="search" aria-label="토큰 심볼 또는 CA 검색" placeholder="심볼 또는 컨트랙트 주소 검색" value={query} onChange={e=>{setQuery(e.target.value);setPage(0)}}/><span>{num(filtered.length)}개</span></div>
+ <div className="coinTools tokenSearch"><input type="search" aria-label="토큰 심볼 또는 CA 검색" placeholder="심볼 또는 컨트랙트 주소 검색" value={query} onChange={e=>{setQuery(e.target.value);setPage(0)}}/>
+ <span>{num(filtered.length)}개</span><MarketSort value={order} onChange={next=>{setOrder(next);setPage(0)}}/></div>
  <div className="tokenBook">
- {filtered.slice(index*size,(index+1)*size).map(t=>{
+ {filtered.slice(index*size,(index+1)*size).map(displayed).map(t=>{
    const contracts:Contract[]=t.contracts||[];
    const primary=t.match;
    const cross=contracts.some(c=>bridgeDestinations(c,contracts).length>0);
