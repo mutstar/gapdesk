@@ -1,4 +1,5 @@
 import {env} from 'cloudflare:workers';
+import {isFreshQualified} from './quote-freshness.mjs';
 import {validImpact} from './impact-limit.mjs';
 import {logScan} from './scan-store';
 type Snapshot=Record<string,any>;
@@ -16,7 +17,7 @@ export async function latestRelay(budget:number,floor:number,only='',maxImpact?:
  const object=await env.BUCKET.get(file);if(!object)return null;
  const data=await new Response(object.body.pipeThrough(new DecompressionStream('gzip'))).json() as Snapshot;
  if(data.contractScreened!==true||data.transferScreened!==true||!data.depthCoverage||maxImpact!==undefined&&data.maxImpact!==maxImpact||data.budget!==budget||data.floor!==floor||Date.now()-data.at>(only?12000:45000))return null;
- data.rows=data.rows.filter((r:Snapshot)=>r.expires>Date.now()&&(!only||r.id===only));
+ data.rows=data.rows.filter((r:Snapshot)=>isFreshQualified(r)&&(!only||r.id===only));
  if(only&&!data.rows.length)return null;
  if(only)data.tokens=[];
  return {...data,revision:object.customMetadata?.revision||String(data.at),mode:data.intervalMs===30000?'PC 30초 수집':'PC 연속 수집',recorded:true};
@@ -29,6 +30,7 @@ export async function acceptRelay(req:Request){
  if(data.contractScreened!==true||data.transferScreened!==true||!data.depthCoverage||!validImpact(data.maxImpact)||!Number.isFinite(at)||Date.now()-at>45000||at>Date.now()+5000||!(budget>=10&&budget<=100000)||!(floor>=0&&floor<=100000)||!Array.isArray(rows)||!Array.isArray(tokens)||!Array.isArray(sources)||!tokens.length||tokens.length>100000)return new Response('유효한 시세 없음',{status:400});
  if(!sources.some(s=>s.ok&&s.count>0))return new Response('시세 미수신',{status:400});
  const revision=String(Date.now());
+ data.rows=rows.filter((r:Snapshot)=>isFreshQualified(r));
  await logScan(data);
  await env.BUCKET.put(file,bytes,{customMetadata:{revision,maxImpact:String(data.maxImpact),at:String(at),budget:String(budget),floor:String(floor)}});
  return Response.json({recorded:true,at,symbols:tokens.length,verified:rows.length});

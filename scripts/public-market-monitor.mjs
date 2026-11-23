@@ -2,6 +2,8 @@
 import {fileURLToPath} from 'node:url';
 import {createSpikeTracker} from '../lib/venue-spikes.mjs';
 import {createSignalOutbox} from '../lib/signal-outbox.mjs';
+import {observationFrame,sameSettings} from '../lib/observation-window.mjs';
+import {isFreshQualified} from '../lib/quote-freshness.mjs';
 import {gzipSync} from 'node:zlib';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {poolValuationAssets} from '../lib/pool-anchors.mjs';
@@ -42,7 +44,7 @@ const outbox=await createSignalOutbox(fileURLToPath(new URL('../.sites-runtime/s
   body=>siteFetch('/api/signal-batches',{method:'POST',headers:{'content-type':'application/gzip'},body}),failed);
 // A slow upload cannot delay the market clock. Keep only the newest waiting revision.
 async function publish(snapshot) {
-  pending = {...snapshot,rows:[...qualified.values()].filter(r => r.expires > Date.now()).sort((a,b) => b.profit-a.profit)};
+  pending = {...snapshot,rows:[...qualified.values()].filter(r => isFreshQualified(r)).sort((a,b) => b.profit-a.profit)};
   if (publishing) return;
   publishing = true;
   try {
@@ -56,10 +58,35 @@ async function publish(snapshot) {
     }
   } finally { publishing = false; }
 }
+// Keep the smaller observation channel independent of full catalogue uploads.
+let queuedBook, sendingBook=false, lastBook;
+async function sendBook(frame){
+  queuedBook=frame;
+  if(sendingBook)return;
+  sendingBook=true;
+  try{
+    while(queuedBook && !stopped){
+      const next=queuedBook;
+      queuedBook=null;
+      try{
+        await siteFetch('/api/observations',{method:'POST',headers:{'content-type':'application/gzip'},
+          body:gzipSync(JSON.stringify(next),{level:1})});
+      }catch(error){failed(error)}
+    }
+  }finally{sendingBook=false}
+}
 async function tick(slot) {
   const {amount:budget,min:floor,maxImpact=1} = await siteFetch('/api/settings');
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
-  const poolPass = async (markets,cex) => {
+  let seq=0, latest;
+  const config={budget,floor,maxImpact};
+  const previous=sameSettings(lastBook,config) && Date.now()-lastBook.at<120000 ? lastBook : undefined;
+  const progress=frame=>{
+    latest={...observationFrame(frame,frame.complete),seq:++seq};
+    void sendBook({...latest,previous:latest.complete?undefined:previous});
+  };
+  progress({...config,startedAt:slot,at:Date.now(),complete:false,futures:{rows:[]}});
+  const poolPass = async (markets,cex,onMarkets) => {
     const valuation = poolValuationAssets(markets,cex);
     const index = startRegistry(markets,{allowDetails});
     const factories = startFactoryRegistry(markets);
@@ -71,7 +98,7 @@ async function tick(slot) {
     const entries = [...known.values()];
     const registry = {...index.coverage,registeredPools:entries.length,factories:factories.coverage};
     const remaining = slot + interval - Date.now() - 2300;
-    const options = {timeoutMs:Math.max(1,Math.min(24000,remaining))};
+    const options = {onMarkets,timeoutMs:Math.max(1,Math.min(24000,remaining))};
     const indexedEntries = index.entries.filter(p => !poolType(p) || retryWithIndex.has(poolKey(p)));
     const [chain, indexed] = await Promise.all([
       readPools(entries, valuation, {...options,anchorMaxAgeMs:45000}),
@@ -85,14 +112,16 @@ async function tick(slot) {
     return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
-  const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,signals:true,
+  const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,onProgress:progress,signals:true,
     previousCandidates:current?new Set(current.eligible):null});
   const sameConfig = current?.budget === budget && current?.floor === floor && current?.maxImpact === maxImpact;
   if (!sameConfig) qualified.clear();
   const eligible = new Set(snapshot.eligible);
-  for (const [id,row] of qualified) if (!eligible.has(id) || row.expires <= Date.now()) qualified.delete(id);
+  for (const [id,row] of qualified) if (!eligible.has(id) || !isFreshQualified(row)) qualified.delete(id);
   const batch = snapshot.attempted;
   current = Object.assign(snapshot, {floor,intervalMs:interval,tested:0,attempted:[],verificationPending:!checking && batch.length>0});
+  progress({...current,complete:true});
+  lastBook=latest;
   poolCursor = current.poolCursor;
   void publish(current);
   const frame={startedAt:slot,at:snapshot.at,budget,floor,maxImpact,signalGaps:signalData.gaps,signalMarketIds:signalData.marketIds,entryChecks:[],
@@ -109,7 +138,7 @@ async function tick(slot) {
       if (current.budget !== budget || current.floor !== floor || current.maxImpact !== maxImpact) return;
       const possible = new Set(current.eligible);
       for (const id of batch) qualified.delete(id);
-      for (const row of rows) if (possible.has(row.id) && row.expires > Date.now()) qualified.set(row.id,row);
+      for (const row of rows) if (possible.has(row.id) && isFreshQualified(row)) qualified.set(row.id,row);
       if (current === origin) Object.assign(current,{tested:batch.length,attempted:batch,verificationPending:false});
       void publish(current);
     }).catch(failed).finally(() => {checking=false;});
@@ -118,5 +147,5 @@ async function tick(slot) {
 while (!stopped) {
   const slot = Math.floor(Date.now()/interval)*interval;
   try { await tick(slot); } catch (error) { failed(error); }
-  if (!stopped) await sleep(Math.max(0,(Math.max(slot,Math.floor(Date.now()/interval)*interval) + interval) - Date.now()));
+  if (!stopped) await sleep(Math.max(0,(slot + interval) - Date.now()));
 }

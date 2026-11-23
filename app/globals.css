@@ -180,3 +180,15 @@
 .productTabs button[aria-pressed=true]{background:#e9f4fc;border-color:#9cbed8;color:#214b70;font-weight:700}
 .basisCard header>b small{font-size:.76rem;font-weight:500;color:#556d80}
 @media(max-width:610px){.venueTabs,.productTabs{margin-inline:12px}.venueTabs button{font-size:.85rem}.basisCard header{flex-wrap:wrap}}
+
+.quoteStamp{display:flex;align-items:center;gap:.55rem;flex-wrap:wrap;font-size:.75rem;color:#52677e;font-variant-numeric:tabular-nums;margin:.4rem 0 .55rem}
+.basisCard.previousGap{background:#f6f8fb;border-color:#d7e1ea}
+.previousGap header,.previousGap .tradePair,.previousGap .marketTools,.previousGap .quoteStamp{opacity:.65}
+.previousGap .quoteStamp{font-weight:600;color:#33445a}
+.marketArrivals{margin:.55rem 0;color:#385768;font-size:.84rem}
+.marketArrivals summary{cursor:pointer;width:fit-content;padding:.5rem .2rem;font-weight:600}
+.arrivalLight{display:inline-block;width:.45rem;height:.45rem;border-radius:50%;margin:0 .45rem;background:#308575}
+.marketArrivals ul{list-style:none;padding:.35rem .7rem;margin:.25rem 0 .65rem;border:1px solid #d6e5eb;border-radius:.6rem;max-height:13rem;overflow:auto}
+.marketArrivals li{display:flex;gap:.35rem .7rem;align-items:baseline;flex-wrap:wrap;padding:.42rem 0;border-bottom:1px solid #e6edf1}
+.marketArrivals li:last-child{border:0}
+.marketArrivals li time{margin-left:auto;font-size:.72rem;font-variant-numeric:tabular-nums}

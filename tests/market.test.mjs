@@ -7,7 +7,7 @@ async function runScenario(opts={},floor=5){
   const actual=globalThis.fetch;
   globalThis.fetch=async path=>{
     const url=new URL(path),q=url.searchParams,ku=url.hostname.includes('kucoin');
-    const response=data=>Response.json(data);
+    const response=data=>Response.json(data,{headers:{date:new Date().toUTCString()}});
     const cex=data=>response({code:ku?'200000':'00000',data});
     if(url.pathname.includes('orderbook')){
       const price=ku?130:100;

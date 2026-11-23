@@ -47,12 +47,15 @@ test('only a full-size single-hop documented pool is associated with the quote',
 test('getQuote propagates validated identity and rejects stale HTTP quote timestamps',async()=>{
   const original=globalThis.fetch;
   try{
-    globalThis.fetch=async()=>Response.json(entered());
+    const date=new Date().toUTCString();
+    globalThis.fetch=async()=>Response.json(entered(),{headers:{date}});
     const q=await getQuote(chain,chain,stable,token,quote.inputUnits,wallet);
     assert.equal(q.pool,pool);
     assert.equal(q.fromToken,stable);
     assert.equal(q.inputUnits,quote.inputUnits);
-    globalThis.fetch=async()=>Response.json(entered(),{headers:{age:'60'}});
-    await assert.rejects(getQuote(chain,chain,stable,token,quote.inputUnits,wallet));
+    for(const headers of [{},{date,age:'60'},{date,age:'unknown'},{date:new Date(Date.now()+10000).toUTCString()}]){
+      globalThis.fetch=async()=>Response.json(entered(),{headers});
+      await assert.rejects(getQuote(chain,chain,stable,token,quote.inputUnits,wallet));
+    }
   }finally{globalThis.fetch=original}
 });

@@ -4,6 +4,9 @@ import {Activity,Radio,Wallet,RefreshCw,SlidersHorizontal,Layers,Check,ArrowUpRi
 import {TradeLeg} from '../components/trade-leg';
 import {strictContractKey} from '../lib/contract-identity.mjs';
 import {ContractCopy} from '../components/contract-copy';
+import {useObservationFeed} from '../components/use-observation-feed';
+import {isFreshQualified} from '../lib/quote-freshness.mjs';
+import {observationFrame} from '../lib/observation-window.mjs';
 import {GapExplorer} from '../components/gap-explorer';
 import {families,venueFamily} from '../lib/venue-family.mjs';
 import {SignalHistory} from '../components/signal-history';
@@ -18,10 +21,25 @@ function venuePage(row:Row,buy:boolean){
 const chains:Record<string,{name:string,gas:string,explorer:string}>=CHAINS;
 const format=(v:number,d=2)=>v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const tm=(v:number)=>new Date(v).toLocaleTimeString('ko-KR',{hour12:false,timeZone:'Asia/Seoul'});
-async function scan(amount:number,floor:number,maxImpact:number,address='',only='',signal?:AbortSignal,cursor='',pool=0,updates=false,revision=''){
+async function scan(amount:number,floor:number,maxImpact:number,address='',only='',signal?:AbortSignal,cursor='',pool=0,updates=false,revision='',onProgress?:(frame:Row)=>void){
  const q=new URLSearchParams({amount:String(amount),floor:String(floor),impact:String(maxImpact)});if(address)q.set('address',address);if(only)q.set('only',only);if(cursor)q.set('cursor',cursor);q.set('pool',String(pool));
  if(updates){q.set('updates','1');q.set('revision',revision)}
- const r=await fetch('/api/scan?'+q,{cache:'no-store',signal});if(r.status===204)return null;if(!r.ok)throw Error('스캔 서버에 연결할 수 없습니다.');return r.json() as Promise<Row>;
+ if(onProgress&&!updates)q.set('stream','1');
+ const r=await fetch('/api/scan?'+q,{cache:'no-store',signal});if(r.status===204)return null;if(!r.ok)throw Error('스캔 서버에 연결할 수 없습니다.');if(!r.headers.get('content-type')?.includes('application/x-ndjson'))return r.json() as Promise<Row>;
+ const reader=r.body!.pipeThrough(new TextDecoderStream()).getReader();
+ let buffer='',result:Row|null=null;
+ while(true){
+   const {value,done}=await reader.read();if(done)break;
+   buffer+=value;let end;
+   while((end=buffer.indexOf('\n'))>=0){
+     const message=JSON.parse(buffer.slice(0,end));buffer=buffer.slice(end+1);
+     if(message.type==='observation')onProgress?.(message.data);
+     if(message.type==='snapshot')result=message.data;
+     if(message.type==='error')throw Error('시세 수집이 중단됐습니다.');
+   }
+ }
+ if(!result)throw Error('스캔 결과를 받지 못했습니다.');
+ return result;
 }
 function QualifiedPair({r}:{r:Row}){
  return <div className="tradePair">
@@ -33,7 +51,9 @@ export default function Home(){
  const [view,setView]=useState('갭 탐색'),[pair,setPair]=useState('전체'),[amount,setAmount]=useState('1000'),[min,setMin]=useState('5'),[impact,setImpact]=useState('1');
  const [settingsNote,setSettingsNote]=useState('');
  const [settings,apply]=useState({amount:1000,min:5,maxImpact:1}),[own,setOwn]=useState(false),[auto,setAuto]=useState(true),[tick,reset]=useState(0);
- const [snapshot,setSnapshot]=useState<Row|null>(null),[busy,setBusy]=useState(true),[err,setErr]=useState(''),[now,setNow]=useState(0);
+ const [savedSnapshot,setSnapshot]=useState<Row|null>(null),[busy,setBusy]=useState(true),[err,setErr]=useState(''),[now,setNow]=useState(0);
+ const snapshot=savedSnapshot?.budget===settings.amount&&savedSnapshot?.floor===settings.min&&savedSnapshot?.maxImpact===settings.maxImpact?savedSnapshot:null;
+ const {book,pc,accept}=useObservationFeed(settings,auto,tick,now);
  const [address,setAddress]=useState(''),[balances,setBalances]=useState<Row>({}),[note,setNote]=useState(''),[walletOpen,showWallet]=useState(false);
  const [selected,select]=useState<Row|null>(null),[jobState,setJobState]=useState<Row|null>(null),[acting,setActing]=useState(false),[jobNote,setJobNote]=useState('');
  const cycle=useRef({cursor:'',pool:0}),lock=useRef(false),modalRef=useRef<HTMLDialogElement>(null);
@@ -49,23 +69,24 @@ export default function Home(){
  async function run(){
  const updates=!!revision&&Date.now()-lastFull<30000;
  if(!updates){lastFull=Date.now();setBusy(true)}
- try{const v=await scan(settings.amount,settings.min,settings.maxImpact,address,'',controller.signal,cycle.current.cursor,cycle.current.pool,updates,revision);
+ try{const v=await scan(settings.amount,settings.min,settings.maxImpact,address,'',controller.signal,cycle.current.cursor,cycle.current.pool,updates,revision,frame=>{if(live)accept(frame,false)});
  if(!v)return;
  revision=v.revision||'';
- if(live){cycle.current={cursor:v.nextCursor||'',pool:v.poolCursor||0};
+ if(live){accept(observationFrame(v,true),!!v.revision);
+ cycle.current={cursor:v.nextCursor||'',pool:v.poolCursor||0};
  const freshIds=new Set(v.eligible),attempted=new Set(v.attempted);
- setSnapshot((old:Row|null)=>{const retained=v.revision?[]:(old?.rows||[]).filter((r:Row)=>r.expires>Date.now()&&freshIds.has(r.id)&&!attempted.has(r.id));return {...v,rows:[...v.rows,...retained].sort((a,b)=>b.profit-a.profit)}});setErr('')}}catch{if(live&&!updates){setSnapshot(null);setErr('데이터를 받지 못했습니다. 새로고침으로 다시 시도하세요.')}}finally{if(live){setBusy(false);if(auto)timer=setTimeout(run,revision?5000:Math.max(1000,lastFull+30000-Date.now()))}}}
- setSnapshot(null);run();return()=>{live=false;controller.abort();clearTimeout(timer)}},[settings,address,auto,tick]);
+ setSnapshot((old:Row|null)=>{const retained=v.revision||old?.budget!==v.budget||old?.floor!==v.floor||old?.maxImpact!==v.maxImpact?[]:(old?.rows||[]).filter((r:Row)=>isFreshQualified(r)&&freshIds.has(r.id)&&!attempted.has(r.id));return {...v,rows:[...v.rows,...retained].sort((a,b)=>b.profit-a.profit)}});setErr('')}}catch{if(live&&!updates){setErr('데이터를 받지 못했습니다. 새로고침으로 다시 시도하세요.')}}finally{if(live){setBusy(false);if(auto)timer=setTimeout(run,revision?5000:Math.max(1000,lastFull+30000-Date.now()))}}}
+ run();return()=>{live=false;controller.abort();clearTimeout(timer)}},[settings,address,auto,tick,accept]);
  const exploring=view==='갭 탐색';
  const [settingsOpen,setSettingsOpen]=useState(false);
  const modal=!!selected||walletOpen;
  useEffect(()=>{const d=modalRef.current;if(modal&&!d?.open)d?.showModal();if(!modal&&d?.open)d.close()},[modal]);
  const close=()=>{if(!lock.current){select(null);showWallet(false);setJobNote('')}};
  async function wallet(){try{const a=await connect();setAddress(a);setNote('');showWallet(false)}catch(e:any){setNote(e.message||'연결 요청을 확인해주세요.');showWallet(true)}}
- const sources:Row[]=snapshot?.sources||[],active=sources.filter(s=>s.ok&&now-s.time<45000);
+ const sources:Row[]=(book?.frame && now-book.frame.at<45000 ? book.frame.sources : snapshot?.sources)||[],active=sources.filter(s=>s.ok&&now-s.time<45000);
  const coverage=snapshot?.poolCoverage, reads:Row[]=coverage?.chainReads||[];
  const registry=coverage?.registry;
- const qualified=(snapshot?.rows||[]).filter((r:Row)=>r.expires>now);
+ const qualified=(snapshot?.rows||[]).filter((r:Row)=>isFreshQualified(r,now));
  const rows=qualified.filter((r:Row)=>(pair==='전체'||venueFamily(r.buyKind,r.sellKind)===pair)&&(!own||address&&r.buyKind==='DEX'&&r.sellKind==='DEX'&&balances[r.from]?.usdc>=r.budget&&balances[r.from]?.eth>=(r.buyGas+r.bridgeGas+(r.approvalGas||0)+.02)/(r.gasPriceFrom||1)&&balances[r.to]?.eth>=(r.sellGas+(r.approvalGas||0)+.02)/(r.gasPriceTo||1)));
  const filter=async(e:React.FormEvent)=>{e.preventDefault();const cfg={amount:Number(amount),min:Number(min),maxImpact:Number(impact)};apply(cfg);setSettingsNote('');
  try{const r=await fetch('/api/scan?mode=settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});if(!r.ok)throw Error();setSettingsNote('모니터링 금액을 저장했어요.')}catch{setSettingsNote('현재 화면에 적용했습니다. 서버 저장을 확인해주세요.')}};
@@ -75,7 +96,7 @@ export default function Home(){
  const routeSteps=selected?steps(current?.row||selected):[],index=current?.i||0,step=routeSteps[index];
  const start=useCallback(async(r:Row)=>{const data=await scan(r.budget,settings.min,settings.maxImpact,address,r.id);
  const ca=strictContractKey(r.match);
- const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
+ const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&isFreshQualified(x)&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
  if(!v)throw Error('현재 견적으로는 이 경로가 조건을 충족하지 않습니다.');
  return v},[address,settings.min,settings.maxImpact]);
  async function act(){
@@ -115,10 +136,10 @@ export default function Home(){
    </dl>
    <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>
  </section>
- {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer spots={snapshot?.spotGaps} book={snapshot?.futures} now={now} budget={settings.amount} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={snapshot?.revision||snapshot?.at||tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
+ {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer observations={book} waiting={busy||!!(auto&&pc&&book&&now>=book.frame.startedAt+30000)} now={now} budget={settings.amount} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={snapshot?.revision||snapshot?.at||tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
  {rows.map((r:Row)=><article className="marketCard" key={r.id}><header className="marketCardHead"><h3>{r.symbol}</h3><div className="gapValue qualifiedGain"><span>예상 순차익</span><strong>+{format(r.profit)} USDC</strong></div></header>
- <QualifiedPair r={r}/><div className="marketTools"><span className="marketState">{r.bridge||'동일 네트워크'} · {chainName(r.from)}{r.from!==r.to?' → '+chainName(r.to):''}</span><button type="button" className="bridgeAction" onClick={()=>{select(r);setJobNote('')}}>경로 확인</button></div><div className="marketActions">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></article>)}
- {!rows.length&&<div className="empty"><div className={'radar '+(busy?'moving':'')}><i/><b/><em/><ScanLine size={24}/></div><h3>{err?'스캔 연결을 확인해주세요':busy?'실행 경로를 확인하고 있어요':!active.length?'최신 견적을 기다리고 있어요':own&&!address?'연결한 지갑이 필요해요':'현재 조건을 충족한 갭이 없어요'}</h3><p>{err||(own&&!address?'지갑을 연결하면 보유 자산으로 실행할 수 있는 경로를 확인합니다.':'입출금 상태와 이동 비용을 반영한 순차익으로 선별합니다.')}</p></div>}
+ <QualifiedPair r={r}/><div className="quoteStamp"><span>매수 호가 {tm(r.buyQuoteAt)} KST</span><span>매도 호가 {tm(r.sellQuoteAt)} KST</span></div><div className="marketTools"><span className="marketState">{r.bridge||'동일 네트워크'} · {chainName(r.from)}{r.from!==r.to?' → '+chainName(r.to):''}</span><button type="button" className="bridgeAction" onClick={()=>{select(r);setJobNote('')}}>경로 확인</button></div><div className="marketActions">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></article>)}
+ {!rows.length&&<div className="empty"><div className={'radar '+(busy?'moving':'')}><i/><b/><em/><ScanLine size={24}/></div><h3>{err?'스캔 연결을 확인해주세요':busy?'실행 경로를 확인하고 있어요':!active.length?'최신 견적을 기다리고 있어요':own&&!address?'연결한 지갑이 필요해요':'현재 조건을 충족한 갭이 없어요'}</h3><p>{err||(own&&!address?'지갑을 연결하면 보유 자산으로 실행할 수 있는 경로를 확인합니다.':'매수·매도 호가가 모두 45초 이내이고 입출금과 비용을 확인한 경로만 표시해요.')}</p></div>}
  <div className="panelFoot"><span><Clock3 size={14}/> {snapshot?tm(snapshot.at)+' KST':'첫 스캔 대기'}</span><span>{busy?'새 견적 확인 중':auto?'다음 스캔 대기':'자동 갱신 일시정지'}</span></div>
  </>}{jobState&&<button className="resume" onClick={resume}>진행 중인 경로 확인 <ChevronRight size={16}/></button>}</section>
  <aside className={'controls '+(settingsOpen?'settingsExpanded':'')}><div className="panelHead"><h2><SlidersHorizontal size={20}/> 스캔 설정</h2><button type="button" className="mobileSettings" aria-expanded={settingsOpen} aria-controls="scan-settings-form" onClick={()=>setSettingsOpen(v=>!v)}>{settings.amount.toLocaleString()} USDC · {settingsOpen?'접기':'변경'}</button></div><form id="scan-settings-form" onSubmit={filter}><label>거래 금액<div className="field"><input aria-label="거래 금액" required type="number" min="10" max="100000" step=".01" value={amount} onChange={e=>setAmount(e.target.value)}/><span>USDC</span></div></label>{!exploring&&<label>최소 예상 순차익<div className="field"><input aria-label="최소 예상 순차익" required type="number" min="0" max="100000" step=".01" value={min} onChange={e=>setMin(e.target.value)}/><span>USDC</span></div></label>}<label>DEX 한쪽 최대 체결가 차이<div className="field"><input aria-label="DEX 한쪽 최대 체결가 차이" required type="number" min="0.01" max="99.99" step=".01" value={impact} onChange={e=>setImpact(e.target.value)}/><span>%</span></div><small>풀 현물가 대비 불리한 차이로, 풀 수수료를 포함해요.</small></label>{!exploring&&<label className="switchLine"><span>내 지갑으로 실행 가능</span><input type="checkbox" checked={own} onChange={e=>setOwn(e.target.checked)}/><i/></label>}<button className="apply">조건 적용</button>{settingsNote&&<small role="status">{settingsNote}</small>}</form><div className="scanCounts"><b>{snapshot?.mode||'이번 스캔'}</b>{snapshot?.depthCoverage&&<p>DEX 매수·매도 중 한 방향 이상 <b>{snapshot.depthCoverage.passed.toLocaleString()}개 통과</b> · {snapshot.depthCoverage.excluded.toLocaleString()}개 제외</p>}{exploring&&<p>선물 시세 {snapshot?.futures?.priced?.toLocaleString()??'—'}개 · 기초자산 CA 매칭 {snapshot?.futures?.matched?.toLocaleString()??'—'}개</p>}<p>현물 예비 후보 {snapshot?.candidateCount??'—'}개 · 정밀 조회 {snapshot?.tested??'—'}개</p><p>목록 기준가 수신 {coverage?.referenceContracts?.toLocaleString()??'—'} / {coverage?.contracts?.toLocaleString()??'—'}개 컨트랙트</p>{registry&&<><p>이번 주기 DEX 가격 확인 <b>{registry.pricedPools.toLocaleString()} / {registry.registeredPools.toLocaleString()}개 풀</b></p><small>온체인 {reads.reduce((n,c)=>n+c.priced,0).toLocaleString()}개 · 풀 목록 조사 {registry.checkedContracts.toLocaleString()} / {registry.contracts.toLocaleString()}개 컨트랙트</small>{registry.factories&&<small>팩토리 조회 {registry.factories.checkedContracts.toLocaleString()}개 · 이번 주기 풀 가격을 확보한 토큰 {registry.pricedContracts.toLocaleString()}개 컨트랙트</small>}</>}<p>최근 시세 수집 {snapshot?tm(snapshot.at)+' KST':'대기 중'}{snapshot&&now-snapshot.at>45000?' · 지연':''}</p><small>{snapshot?.intervalMs===30000?'PC에서 30초마다 지원 토큰과 등록 풀을 확인합니다.':'클라우드에서 시세를 조회합니다.'} 정밀 견적은 후보별로 확인합니다. PC가 꺼지면 백그라운드 기록은 시간당 한 번입니다.</small></div></aside></div>}

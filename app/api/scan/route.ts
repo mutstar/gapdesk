@@ -1,4 +1,5 @@
 import {DEFAULT_IMPACT,validImpact} from '../../../lib/impact-limit.mjs';
+import {isFreshQualified} from '../../../lib/quote-freshness.mjs';
 import {latestRelay,relayChanged} from '../../../lib/relay';
 import {wideScan} from '../../../lib/universe.mjs';
 import {readState,writeState,logScan} from '../../../lib/scan-store';
@@ -21,9 +22,26 @@ export async function GET(req:Request){
  if(relay&&!(only&&address))return Response.json(relay,{headers:{'Cache-Control':'no-store'}});
  if(p.get('updates')==='1')return new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
  const savedEntries=only?relay?.rows.find((r:any)=>r.id===only)?.depthChecks?.flatMap((c:any)=>c.entries)||[]:[];
- const data=await wideScan({budget,floor,address,only,cursor,poolCursor,maxImpact,savedEntries});
- let recorded=false;if(!only)try{await logScan(data);recorded=true}catch{}
- return Response.json({...data,mode:'클라우드 직접 조회',recorded},{headers:{'Cache-Control':'no-store'}});
+ async function run(onProgress?: (frame:any)=>void){
+   const data=await wideScan({budget,floor,address,only,cursor,poolCursor,maxImpact,savedEntries,onProgress});
+   let recorded=false;
+   if(!only)try{await logScan(data);recorded=true}catch{}
+   return {...data,floor,rows:data.rows.filter((r:any)=>isFreshQualified(r)),mode:'클라우드 직접 조회',recorded};
+ }
+ if(!only && p.get('stream')==='1'){
+   let closed=false;
+   const encoder=new TextEncoder();
+   const body=new ReadableStream({
+     start(controller){
+       const send=(type:string,data:any)=>{if(!closed)controller.enqueue(encoder.encode(JSON.stringify({type,data})+'\n'))};
+       void run(frame=>send('observation',frame)).then(data=>send('snapshot',data)).catch(()=>send('error',null))
+         .finally(()=>{if(!closed){closed=true;controller.close()}});
+     },
+     cancel(){closed=true}
+   });
+   return new Response(body,{headers:{'Content-Type':'application/x-ndjson','Cache-Control':'no-store'}});
+ }
+ return Response.json(await run(),{headers:{'Cache-Control':'no-store'}});
 }
 // Sites authenticates service callers before dispatch to this owner-private site.
 export async function POST(req:Request){

@@ -2,6 +2,7 @@
 import {useEffect,useMemo,useState} from 'react';
 import {ChevronDown,Route} from 'lucide-react';
 import {ContractCopy,type Contract} from './contract-copy';
+import {isFreshQualified} from '../lib/quote-freshness.mjs';
 import {TradeLeg} from './trade-leg';
 import {TokenBridge} from './token-bridge';
 import {bridgeDestinations} from '../lib/token-contracts.mjs';
@@ -17,7 +18,7 @@ export function TokenUniverse({tokens,busy,at,budget,floor,address,now,verified}
  const quotes=new Map<string,R>();
  for(const r of verified){
    const asset=strictContractKey({chain:r.from,token:r.fromToken});
-   if(!asset||asset!==strictContractKey({chain:r.to,token:r.toToken})||asset!==strictContractKey(r.match)||r.budget!==budget||!(r.expires>now&&r.profit>0&&r.qty>0&&r.arrival>0&&r.proceeds>0))continue;
+   if(!asset||asset!==strictContractKey({chain:r.to,token:r.toToken})||asset!==strictContractKey(r.match)||r.budget!==budget||!(isFreshQualified(r,now)&&r.profit>0&&r.qty>0&&r.arrival>0&&r.proceeds>0))continue;
    const ask=r.budget/r.qty,bid=r.proceeds/r.arrival,gap=(bid/ask-1)*100;
    if(gap>0&&gap>(quotes.get(asset)?.gap??0))quotes.set(asset,{gap,ask,bid,buy:r.buy,sell:r.sell,buyImpact:null,sellImpact:null,
      status:'체인·CA 일치 · 견적 통과',quote:r});

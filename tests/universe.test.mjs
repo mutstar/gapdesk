@@ -31,16 +31,16 @@ test('exact budget and required sides are rechecked with depth, fees, and both F
  assert.equal(await run(5,{nets:async m=>m===buy?[{...net(),fee:49}]:[net()]}),null);
 });
 test('strict spot qualification requires one chain and one issued CA even when a bridge quotes a conversion',async()=>{
- function deep(m){
-  const stable=CHAINS[m.chain],now=Date.now(),reserve=1000000n;
+ function deep(m,now=Date.now()){
+  const stable=CHAINS[m.chain],reserve=1000000n;
   return {...m,time:now,block:99,blockTime:now,depth:{chain:m.chain,pool:m.pool,block:99,time:now,dexId:'uniswap',protocol:'v2',feePpm:3000,
    token0:m.token,token1:stable.usdc,decimals0:6,decimals1:stable.decimals,reserve0:String(reserve*1000000n),
    reserve1:String(reserve*BigInt(m.ask)*10n**BigInt(stable.decimals))}};
  }
- const b=deep(dex('one',10)),s=deep(dex('two',14)),seen=[];
+ const markTime=Date.now(),b=deep(dex('one',10),markTime-6000),s=deep(dex('two',14),markTime-4000),seen=[];
  const io={gas:async()=>0,quote:async(a,z,src,dst,input)=>{
    seen.push({a,z,src,dst,input});const buy=src===CHAINS[a].usdc;
-   return {fromChain:a,toChain:z,fromToken:src,toToken:dst,inputUnits:input,at:Date.now(),fromDecimals:6,toDecimals:6,
+   return {fromChain:a,toChain:z,fromToken:src,toToken:dst,inputUnits:input,at:markTime-5000,fromDecimals:6,toDecimals:6,
      minimum:buy?'100000000':'1390000000',tool:'dex',gas:0,duration:10}}};
  for(const t of [deep(dex('otherCA',14,8453,other)),deep(dex('otherChain',14,56,token))]){
    assert.equal(await qualify({buy:b,sell:t},1000,5,wallet,{},io),null);
@@ -48,10 +48,12 @@ test('strict spot qualification requires one chain and one issued CA even when a
  assert.equal(seen.length,0);
  const result=await qualify({buy:b,sell:s},1000,5,wallet,{},io);
  assert.equal(result.profit,390);assert.deepEqual(result.match,{chain:8453,token});
+ assert.equal(result.buyQuoteAt,markTime-6000);assert.equal(result.sellQuoteAt,markTime-5000);
  assert.deepEqual(seen.map(x=>x.src),[CHAINS[8453].usdc,token]);
  const poorMinimum={...io,quote:async(...args)=>{const q=await io.quote(...args);return q.toToken===CHAINS[8453].usdc?{...q,minimum:'1300000000'}:q}};
  assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},poorMinimum),null);
  assert.equal(await qualify({buy:b,sell:{...s,depth:undefined}},1000,5,wallet,{},io),null);
+ assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},{...io,quote:async(...args)=>({...await io.quote(...args),at:undefined})}),null);
  assert.deepEqual(steps(result).map(x=>x.output),[token,CHAINS[8453].usdc]);
 });
 
