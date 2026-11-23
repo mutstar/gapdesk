@@ -134,3 +134,14 @@ test('hourly peaks are keyed by contract and omit unproven legacy and mismatched
   assert.ok(rows.every(r=>r.token===match.token));
   assert.equal((await observations('ace',true,db,at+2000)).length,3);
 });
+
+test('venue families include both mixed directions and intersect the saved market type',async t=>{
+  const {log,history}=setup(t);
+  const variants=[['dex:A|dex:B',null],['dex:A|bitget:perp:B','perp_spot'],['kucoin:A|dex:B',null],
+    ['bitget:A|kucoin:B',null],['kucoin:A|binance:perp:B','perp_spot'],['bitget:perp:A|binance:perp:B','perp_perp']];
+  await log(frame(0,{signalGaps:variants.map(([id,basis])=>({...gap,id,basis}))}));
+  const count=async(family,market='all')=>(await history({family,market})).items.length;
+  assert.equal(await count('DEX–DEX'),1);assert.equal(await count('DEX–CEX'),2);
+  assert.equal(await count('CEX–CEX'),3);assert.equal(await count('CEX–CEX','perp_perp'),1);
+  assert.equal(await count('DEX–CEX','perp_spot'),1);
+});

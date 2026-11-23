@@ -1,3 +1,4 @@
+import {families} from './venue-family.mjs';
 import {strictContractKey} from './contract-identity.mjs';
 type Row=Record<string,any>;
 const DAY=86400000;
@@ -102,15 +103,25 @@ export class InvalidSignalQuery extends Error {}
 export async function signalHistory(params:URLSearchParams,connection?:D1Database,now=Date.now()){
   const kind=params.get('kind')??'gaps',hours=Number(params.get('hours')??24);
   const symbol=(params.get('symbol')??'').trim().toUpperCase(),venue=(params.get('venue')??'').trim();
-  const limit=Number(params.get('limit')??50),market=params.get('market')||'all';
-  if(!['all','spot','perp_spot','perp_perp'].includes(market)||!['gaps','spikes'].includes(kind)||!Number.isInteger(hours)||hours<1||hours>168||
+  const limit=Number(params.get('limit')??50),market=params.get('market')||'all',family=params.get('family')||'전체';
+  if(!families.includes(family)||!['all','spot','perp_spot','perp_perp'].includes(market)||!['gaps','spikes'].includes(kind)||!Number.isInteger(hours)||hours<1||hours>168||
     !Number.isInteger(limit)||limit<1||limit>100||symbol.length>150||venue.length>300)throw new InvalidSignalQuery();
   const db=connection??await storage(),gaps=kind==='gaps',time=gaps?'opened_at':'at',source=gaps?'gap_episodes':'venue_spikes';
   const clauses=[time+'>=?',time+'<=?'],bindings:(string|number)[]=[];
   const cursor=params.get('cursor');
   const screened=gaps&&params.get('screened')==='1';
-  const filterKey=JSON.stringify([kind,hours,symbol,venue,...(market==='all'?[]:[market]),...(screened?['screened']:[])]);
+  const filterKey=JSON.stringify([kind,hours,symbol,venue,...(market==='all'?[]:[market]),...(screened?['screened']:[]),...(family==='전체'?[]:[family])]);
   if(gaps)clauses.push('contract_key IS NOT NULL');
+  if(gaps&&family!=='전체'){
+    // Historical route IDs retain the original venue prefixes on both legs.
+    const left="substr(route_id,1,instr(route_id,':')-1)";
+    const rightLeg="substr(route_id,instr(route_id,'|')+1)";
+    const right=`substr(${rightLeg},1,instr(${rightLeg},':')-1)`;
+    const cex="('bitget','kucoin','binance','bithumb')";
+    if(family==='DEX–DEX')clauses.push(`${left}='dex' AND ${right}='dex'`);
+    if(family==='CEX–CEX')clauses.push(`${left} IN ${cex} AND ${right} IN ${cex}`);
+    if(family==='DEX–CEX')clauses.push(`((${left}='dex' AND ${right} IN ${cex}) OR (${right}='dex' AND ${left} IN ${cex}))`);
+  }
   if(screened)clauses.push("(status IN ('passed','perp_spot','perp_perp') OR reason='동일 네트워크 이동 경로 확인')");
   let anchor=now;
   if(cursor){
