@@ -107,3 +107,32 @@
 }
 
 .routeCAs {display:flex;flex-wrap:wrap;gap:6px;padding:0 20px 10px}.routeCAs:empty {display:none}
+
+.signalFilters{display:flex;align-items:end;flex-wrap:wrap;gap:12px;padding:12px 20px;background:#f4f9fd;border-block:1px solid #dbe8f3}
+.signalFilters label{display:block;color:#3c5970;font-size:.82rem;font-weight:600}
+.signalFilters label svg{vertical-align:-2px}
+.signalFilters input,.signalFilters select{display:block;width:10rem;max-width:100%;font:inherit;color:#163751;background:white;border:1px solid #adc9dd;border-radius:6px;padding:6px 8px;margin-top:4px}
+.signalFilters select{width:6rem}
+.signalCard{padding:14px 20px;border-bottom:1px solid #dbe8f3}
+.signalHead,.signalNumbers{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+.signalHead strong{font-size:1.04rem}.signalHead time{margin-left:auto;color:#4b6881;font-size:.82rem}
+.verdict,.spikeMove{display:inline-flex;align-items:center;gap:3px;font-size:.76rem;padding:2px 7px;border-radius:5px;background:#eaf0f5;color:#445c72}
+.verdict.passed,.spikeMove.rise{background:#dcf4e8;color:#176743}
+.verdict.blocked,.spikeMove.drop{background:#ffebe1;color:#8d431f}
+.signalRoute{margin:7px 0;color:#193d5d;font-weight:600}
+.signalNumbers{color:#4b667e;font-size:.86rem;font-variant-numeric:tabular-nums}
+.signalNumbers b{color:#1b4165}.signalCard p,.signalCard details,.pastSignals p{font-size:.82rem;color:#506c80;margin:6px 0}
+.signalCard summary,.pastSignals summary{cursor:pointer;color:#305978}
+.pastSignals,.signalEmpty{padding:14px 20px}.signalEmpty{color:#587083}
+@media(max-width:830px){.mastInner{gap:14px}.mast nav{gap:14px}}
+@media(max-width:680px){
+ .mastInner{height:auto;min-height:60px;flex-wrap:wrap;gap:0;padding-top:10px}
+ .mast nav{order:3;width:100%;margin-top:5px;display:grid;grid-template-columns:.85fr 1.18fr .8fr 1.2fr;gap:0}
+ .mast nav button{justify-content:center;padding:10px 0;font-size:.8rem;white-space:nowrap}
+ .mast nav button svg{display:none}.mast .wallet{margin-left:auto}
+ .workspace.historyWorkspace .board{grid-row:1}.workspace.historyWorkspace .controls{grid-row:2}
+ .signalFilters,.signalCard,.pastSignals,.signalEmpty{padding:10px 12px}
+ .signalFilters{display:grid;grid-template-columns:1fr 65px 1fr;gap:8px}
+ .signalFilters input,.signalFilters select{width:100%;min-width:0}
+ .signalHead time{width:100%;margin:0}
+}

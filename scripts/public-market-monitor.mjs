@@ -1,4 +1,7 @@
 // Owner-private read-only data producer. Its launcher passes the Site credential on stdin.
+import {fileURLToPath} from 'node:url';
+import {createSpikeTracker} from '../lib/venue-spikes.mjs';
+import {createSignalOutbox} from '../lib/signal-outbox.mjs';
 import {gzipSync} from 'node:zlib';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {poolValuationAssets} from '../lib/pool-anchors.mjs';
@@ -34,6 +37,9 @@ function failed(error) {
   if (error.message === 'access-expired') stopped = true;
   console.error(new Date().toISOString(), error.message);
 }
+const tracker=await createSpikeTracker({cacheFile:fileURLToPath(new URL('../.sites-runtime/venue-baselines.sqlite',import.meta.url))});
+const outbox=await createSignalOutbox(fileURLToPath(new URL('../.sites-runtime/signal-outbox/',import.meta.url)),
+  body=>siteFetch('/api/signal-batches',{method:'POST',headers:{'content-type':'application/gzip'},body}),failed);
 // A slow upload cannot delay the market clock. Keep only the newest waiting revision.
 async function publish(snapshot) {
   pending = {...snapshot,rows:[...qualified.values()].filter(r => r.expires > Date.now()).sort((a,b) => b.profit-a.profit)};
@@ -79,7 +85,8 @@ async function tick(slot) {
     return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
-  const {snapshot,verify} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass});
+  const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,signals:true,
+    previousCandidates:current?new Set(current.eligible):null});
   const sameConfig = current?.budget === budget && current?.floor === floor && current?.maxImpact === maxImpact;
   if (!sameConfig) qualified.clear();
   const eligible = new Set(snapshot.eligible);
@@ -88,12 +95,17 @@ async function tick(slot) {
   current = Object.assign(snapshot, {floor,intervalMs:interval,tested:0,attempted:[],verificationPending:!checking && batch.length>0});
   poolCursor = current.poolCursor;
   void publish(current);
+  const frame={startedAt:slot,at:snapshot.at,budget,floor,maxImpact,signalGaps:signalData.gaps,signalMarketIds:signalData.marketIds,entryChecks:[],
+    spikes:await tracker.observe(signalData.samples,{at:slot,config:JSON.stringify([budget,floor,maxImpact])})};
+  await outbox.put(frame);
   if (checking || !batch.length) return;
   checking = true;
   cursor = current.nextCursor;
   try {
     const origin = current;
-    void verify().then(rows => {
+    const entryChecks=[];
+    void verify(check=>entryChecks.push(check)).then(async rows => {
+      await outbox.put({...frame,entryChecks});
       if (current.budget !== budget || current.floor !== floor || current.maxImpact !== maxImpact) return;
       const possible = new Set(current.eligible);
       for (const id of batch) qualified.delete(id);

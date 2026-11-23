@@ -2,6 +2,7 @@
 import {useState,useEffect,useRef,useCallback} from 'react';
 import {Activity,Radio,Wallet,RefreshCw,SlidersHorizontal,Layers,Check,ArrowUpRight,Clock3,ScanLine,ChevronRight,X,Pause,Play,Network,ShieldCheck} from 'lucide-react';
 import {ContractCopy} from '../components/contract-copy';
+import {SignalHistory} from '../components/signal-history';
 import {TokenUniverse} from '../components/token-universe';
 import {CHAINS} from '../lib/assets.js';
 import {chainName,checkTx,connect,publicBalances,sendStep,steps} from '../lib/wallet.js';
@@ -89,7 +90,7 @@ export default function Home(){
  }catch(e:any){setJobNote(e.code===4001?'지갑에서 요청을 취소했습니다.':e.message||'실행할 수 없습니다.')}
  finally{lock.current=false;setActing(false)}
  }
- return <><header className="mast"><div className="mastInner"><a href="/" className="brand"><i className="mark"><b/><b/><b/></i>Gapdesk</a><nav aria-label="주 메뉴">{['전체 토큰','먹을 수 있는 갭'].map((n,i)=><button key={n} aria-pressed={view===n} className={view===n?'navOn':''} onClick={()=>setView(n)}>{i?<Layers size={16}/>:<Activity size={17}/>} {n}</button>)}</nav><button className="wallet" onClick={()=>{setNote('');showWallet(true)}}><Wallet size={16}/>{address?address.slice(0,6)+'…'+address.slice(-4):'지갑 연결'}</button></div></header>
+ return <><header className="mast"><div className="mastInner"><a href="/" className="brand"><i className="mark"><b/><b/><b/></i>Gapdesk</a><nav aria-label="주 메뉴">{['전체 토큰','먹을 수 있는 갭','신규 갭','거래소별 급등락'].map((n,i)=><button key={n} aria-pressed={view===n} className={view===n?'navOn':''} onClick={()=>setView(n)}>{[<Activity key="a" size={17}/>,<Layers key="b" size={16}/>,<Clock3 key="c" size={16}/>,<Radio key="d" size={16}/>][i]} {n}</button>)}</nav><button className="wallet" onClick={()=>{setNote('');showWallet(true)}}><Wallet size={16}/>{address?address.slice(0,6)+'…'+address.slice(-4):'지갑 연결'}</button></div></header>
  <main><div className="titleLine"><div><div className="overline"><span className="liveDot"/> CEX · DEX 현물</div><h1>{view}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}화면 갱신 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
  <section className="scanSummary" aria-label="스캔 현황">
    <dl>
@@ -99,7 +100,7 @@ export default function Home(){
    </dl>
    <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>
  </section>
- {<div className="workspace"><section className="board">{view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{pairs.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
+ {<div className={'workspace '+(view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={snapshot?.revision||snapshot?.at||tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{pairs.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
  <div className="tableHead"><span>매수 · 매도 마켓</span><span>이동 경로</span><span>예상 순차익</span></div>
  {rows.map((r:Row)=><div className="routeItem" key={r.id}><button className="routeRow" onClick={()=>{select(r);setJobNote('')}}><span><strong>{r.symbol} · {r.buy} › {r.sell}</strong><small>{r.kind} · {r.symbol}</small></span><span>{r.bridge||'동일 네트워크'}<small>{chainName(r.from)} · {chainName(r.to)}</small></span><span className="gain">+{format(r.profit)}<small>USDC</small></span></button><div className="routeCAs">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></div>)}
  {!rows.length&&<div className="empty"><div className={'radar '+(busy?'moving':'')}><i/><b/><em/><ScanLine size={24}/></div><h3>{err?'스캔 연결을 확인해주세요':busy?'실행 경로를 확인하고 있어요':!active.length?'최신 견적을 기다리고 있어요':own&&!address?'연결한 지갑이 필요해요':'현재 조건을 충족한 갭이 없어요'}</h3><p>{err||(own&&!address?'지갑을 연결하면 보유 자산으로 실행할 수 있는 경로를 확인합니다.':'입출금 상태와 이동 비용을 반영한 순차익으로 선별합니다.')}</p></div>}
