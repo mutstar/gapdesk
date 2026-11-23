@@ -1,0 +1,29 @@
+import {env} from 'cloudflare:workers';
+import {logScan} from './scan-store';
+type Snapshot=Record<string,any>;
+const file='live/public-markets.json.gz';
+export async function latestRelay(budget:number,floor:number,only=''){
+ if(!env.BUCKET)return null;
+ const head=await env.BUCKET.head(file),meta=head?.customMetadata;
+ if(!meta||Number(meta.budget)!==budget||Number(meta.floor)!==floor)return null;
+ const age=Date.now()-Number(meta.at);
+ if(age< -5000||age>(only?12000:45000))return null;
+ const object=await env.BUCKET.get(file);if(!object)return null;
+ const data=await new Response(object.body.pipeThrough(new DecompressionStream('gzip'))).json() as Snapshot;
+ if(data.budget!==budget||data.floor!==floor||Date.now()-data.at>(only?12000:45000))return null;
+ data.rows=data.rows.filter((r:Snapshot)=>r.expires>Date.now()&&(!only||r.id===only));
+ if(only&&!data.rows.length)return null;
+ if(only)data.tokens=[];
+ return {...data,mode:'PC 연속 수집',recorded:true};
+}
+export async function acceptRelay(req:Request){
+ if(!env.BUCKET||req.headers.get('content-type')!=='application/gzip')return new Response('지원하지 않는 요청',{status:400});
+ const bytes=await req.arrayBuffer();if(bytes.byteLength>4000000)return new Response('크기 한도',{status:413});
+ const data=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).json() as Snapshot;
+ const {at,budget,floor,rows,tokens,sources}=data;
+ if(!Number.isFinite(at)||Date.now()-at>45000||at>Date.now()+5000||!(budget>=10&&budget<=100000)||!(floor>=0&&floor<=100000)||!Array.isArray(rows)||!Array.isArray(tokens)||!Array.isArray(sources)||!tokens.length||tokens.length>100000)return new Response('유효한 시세 없음',{status:400});
+ if(!sources.some(s=>s.ok&&s.count>0))return new Response('시세 미수신',{status:400});
+ await logScan(data);
+ await env.BUCKET.put(file,bytes,{customMetadata:{at:String(at),budget:String(budget),floor:String(floor)}});
+ return Response.json({recorded:true,at,symbols:tokens.length,verified:rows.length});
+}

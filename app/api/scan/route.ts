@@ -1,3 +1,4 @@
+import {latestRelay} from '../../../lib/relay';
 import {wideScan} from '../../../lib/universe.mjs';
 import {readState,writeState,logScan} from '../../../lib/scan-store';
 const valid=(budget:number,floor:number)=>Number.isFinite(budget)&&budget>=10&&budget<=100000&&Number.isFinite(floor)&&floor>=0&&floor<=100000;
@@ -10,9 +11,11 @@ export async function GET(req:Request){
  }
  const cursor=p.get('cursor')||'',poolCursor=Number(p.get('pool')||0);
  if(cursor.length>500||!Number.isSafeInteger(poolCursor)||poolCursor<0)return new Response('커서 오류',{status:400});
+ const relay=await latestRelay(budget,floor,only).catch(()=>null);
+ if(relay)return Response.json(relay,{headers:{'Cache-Control':'no-store'}});
  const data=await wideScan({budget,floor,address,only,cursor,poolCursor});
  let recorded=false;if(!only)try{await logScan(data);recorded=true}catch{}
- return Response.json({...data,recorded},{headers:{'Cache-Control':'no-store'}});
+ return Response.json({...data,mode:'클라우드 직접 조회',recorded},{headers:{'Cache-Control':'no-store'}});
 }
 // Sites authenticates service callers before dispatch to this owner-private site.
 export async function POST(req:Request){
@@ -23,6 +26,8 @@ export async function POST(req:Request){
  }
  if(p.get('mode')!=='monitor')return new Response('모드 오류',{status:400});
  const settings=await readState('settings')||{amount:1000,min:5},state=await readState('monitor')||{};
+ const relay=await latestRelay(settings.amount,settings.min).catch(()=>null) as Record<string,any>|null;
+ if(relay)return Response.json({at:relay.at,tokens:relay.tokens.length,compared:relay.checked,verified:relay.rows.length,recorded:true,mode:relay.mode});
  const data=await wideScan({budget:settings.amount,floor:settings.min,cursor:state.cursor||'',poolCursor:state.pool||0});
  await logScan(data);await writeState('monitor',{cursor:data.nextCursor,pool:data.poolCursor,at:data.at});
  return Response.json({at:data.at,tokens:data.tokens.length,compared:data.checked,verified:data.rows.length,recorded:true});
