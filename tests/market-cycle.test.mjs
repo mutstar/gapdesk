@@ -25,7 +25,8 @@ test('each 30s slot fetches all four catalogs and retains the upstream cache age
     const simulatedPool={...a.markets[0],id:'test-pool',reference:'pool',pool:'test',bid:2,ask:2,time:Date.now()};
     const {summaries,candidates}=discover([...a.markets,simulatedPool],1000,5);
     assert.equal(candidates.length,0);
-    assert.equal(summaries[0].status,'기준가 시차 있음');
+    assert.equal(summaries[0].gap,null);
+    assert.equal(summaries[0].priced,0);
   } finally {globalThis.fetch=original;}
 });
 

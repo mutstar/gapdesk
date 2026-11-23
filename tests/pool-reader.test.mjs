@@ -29,9 +29,11 @@ function mockRpc(headTime, handler) {
       const target = '0x' + body.slice(tuple + 24, tuple + 64);
       assert.equal(getWord(body, tuple + 64), 1);
       const selectorStart = tuple + getWord(body, tuple + 128) * 2;
-      assert.equal(getWord(body, selectorStart), 4);
+      const size=getWord(body,selectorStart);
+      assert.ok(size===4 || size===36);
       const selector = body.slice(selectorStart + 64, selectorStart + 72);
-      const value = handler(target, selector);
+      const args=body.slice(selectorStart+72,selectorStart+64+size*2);
+      const value = handler(target, selector,args);
       const tail = word(value != null ? 1 : 0) + word(64) + word((value || '').length / 2) + (value || '');
       heads.push(word(offset)); payloads.push(tail); offset += tail.length / 2;
     }
@@ -114,4 +116,31 @@ test('Aerodrome stable invariant uses normalized reserves, including cached pool
     assert.equal(markets.length, 1);
     assert.ok(Math.abs(markets[0].ask - 14 / 13) < 1e-12);
   }
+});
+
+test('factory provenance, immutable fees and a signed pinned bitmap are required for wider V3 depth', async () => {
+  const p=address(5001),token=address(5002),price='79224201403219477170569942574',factory='0x1f98431c8ad98523631ae4a59f267346ea31f984';
+  const e={...entry(p,token,'v3'),protocol:'v3'};
+  const calls=[];
+  const rpc=mockRpc(Date.now(),(_target,s,args)=>{
+    calls.push(s);
+    if(s==='0dfe1681') return addressWord(token);
+    if(s==='d21220a7') return addressWord(usdc);
+    if(s==='c45a0155') return addressWord(factory);
+    if(s==='ddca3f43') return word(500);
+    if(s==='d0c93a7c') return word(10);
+    if(s==='1a686502') return word(1000000000000000n);
+    if(s==='3850c7bd') return word(price)+word(BigInt.asUintN(256,-1n))+word(0).repeat(4)+word(1);
+    if(s==='5339c296') {assert.equal(args,'f'.repeat(64));return word(0);}
+    return null;
+  });
+  const inputs=[asset(token,6)];
+  const [cold]= (await readPools([e],inputs,{rpc,intervalMs:0})).markets;
+  assert.equal(cold.depth.tick,-1);assert.equal(cold.depth.bitmap,undefined);
+  const [warm]= (await readPools([e],inputs,{rpc,intervalMs:0})).markets;
+  assert.equal(warm.depth.wordIndex,-1);
+  assert.equal(warm.depth.bitmap,'0x'+word(0));
+  assert.equal(calls.filter(s=>s==='ddca3f43').length,1);
+  const [indexed]=(await readPools([{...e,protocol:undefined}],inputs,{rpc,intervalMs:0})).markets;
+  assert.equal(indexed.depth,undefined);
 });

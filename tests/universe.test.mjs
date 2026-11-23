@@ -12,7 +12,7 @@ const dex=(id,price,chain=8453,addr=token)=>({id,name:id,symbol:'ACE',kind:'DEX'
 test('raw ACE halt and namesake remain visible without qualifying',()=>{
  const cheap=dex('pool',1),otherAsset=dex('namesake',50,1,other),halt={...cex('halt',100,[net()]),observationOnly:true,venue:'bithumb',depositOpen:false,withdrawOpen:false};
  const u=discover([cheap,otherAsset,halt],1000,0);
- assert.equal(u.summaries[0].gap,9900);assert.equal(u.summaries[0].halt,true);assert.equal(u.candidates.length,0);
+ assert.equal(u.summaries[0].gap,null);assert.equal(u.summaries[0].halt,true);assert.equal(u.candidates.length,0);
 });
 test('every persistent candidate receives verification time despite a permanent outlier',()=>{
  const items=Array.from({length:17},(_,i)=>({id:'pair'+i}));let cursor='',visited=new Set();
@@ -31,11 +31,23 @@ test('exact budget and required sides are rechecked with depth, fees, and both F
  assert.equal(await run(5,{nets:async m=>m===buy?[{...net(),fee:49}]:[net()]}),null);
 });
 test('cross-chain non-native asset uses exact token, decimals and route quote at each step',async()=>{
- const b=dex('one',10),s=dex('two',14,56,other),seen=[];
+ function deep(m){
+  const stable=CHAINS[m.chain],now=Date.now(),reserve=1000000n;
+  return {...m,time:now,block:99,blockTime:now,depth:{chain:m.chain,pool:m.pool,block:99,time:now,dexId:'uniswap',protocol:'v2',feePpm:3000,
+   token0:m.token,token1:stable.usdc,decimals0:6,decimals1:stable.decimals,reserve0:String(reserve*1000000n),
+   reserve1:String(reserve*BigInt(m.ask)*10n**BigInt(stable.decimals))}};
+ }
+ const b=deep(dex('one',10)),s=deep(dex('two',14,56,other)),seen=[];
  const io={gas:async()=>0,quote:async(a,z,src,dst,input)=>{
-   seen.push({a,z,src,dst,input});const i=seen.length;return {fromDecimals:6,toDecimals:i===3?18:6,minimum:['100000000','99000000','1300000000000000000000'][i-1],tool:'dex',gas:0,duration:10}}};
+   seen.push({a,z,src,dst,input});const bridge=a!==z,buy=src===CHAINS[a].usdc;
+   return {fromChain:a,toChain:z,fromToken:src,toToken:dst,inputUnits:input,at:Date.now(),fromDecimals:6,toDecimals:bridge||buy?6:18,
+     minimum:bridge?'99000000':buy?'100000000':'1380000000000000000000',tool:'dex',gas:0,duration:10}}};
  const result=await qualify({buy:b,sell:s},1000,5,wallet,{8453:1700,56:550},io);
- assert.equal(result.profit,300);assert.deepEqual(seen.map(x=>x.src),[CHAINS[8453].usdc,token,other]);
+ assert.equal(result.profit,380);assert.equal(result.depthChecks.length,2);
+ assert.deepEqual(seen.map(x=>x.src),[CHAINS[8453].usdc,token,other]);
+ const poorMinimum={...io,quote:async(...args)=>{const q=await io.quote(...args);return q.toToken===CHAINS[56].usdc?{...q,minimum:'1300000000000000000000'}:q}};
+ assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},poorMinimum),null);
+ assert.equal(await qualify({buy:b,sell:{...s,depth:undefined}},1000,5,wallet,{},io),null);
  assert.deepEqual(steps(result).map(x=>x.output),[token,other,CHAINS[56].usdc]);
  assert.equal(steps(result)[2].amount,'99000000');
  const unavailable={...io,quote:async(a,z)=>{if(a!==z)throw Error('no bridge');return {fromDecimals:6,toDecimals:6,minimum:'100000000',tool:'dex',gas:0,duration:0}}};

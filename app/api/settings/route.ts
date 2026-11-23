@@ -1,2 +1,2 @@
 import {readState} from '../../../lib/scan-store';
-export async function GET(){return Response.json(await readState('settings')||{amount:1000,min:5},{headers:{'Cache-Control':'no-store'}})}
+export async function GET(){return Response.json({amount:1000,min:5,maxImpact:1,...await readState('settings')},{headers:{'Cache-Control':'no-store'}})}

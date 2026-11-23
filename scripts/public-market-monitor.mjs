@@ -51,7 +51,7 @@ async function publish(snapshot) {
   } finally { publishing = false; }
 }
 async function tick(slot) {
-  const {amount:budget,min:floor} = await siteFetch('/api/settings');
+  const {amount:budget,min:floor,maxImpact=1} = await siteFetch('/api/settings');
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
   const poolPass = async (markets,cex) => {
     const valuation = poolValuationAssets(markets,cex);
@@ -79,8 +79,8 @@ async function tick(slot) {
     return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
-  const {snapshot,verify} = await prepareScan({budget,floor,cursor,poolCursor,limit:10,startedAt:slot,poolPass});
-  const sameConfig = current?.budget === budget && current?.floor === floor;
+  const {snapshot,verify} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass});
+  const sameConfig = current?.budget === budget && current?.floor === floor && current?.maxImpact === maxImpact;
   if (!sameConfig) qualified.clear();
   const eligible = new Set(snapshot.eligible);
   for (const [id,row] of qualified) if (!eligible.has(id) || row.expires <= Date.now()) qualified.delete(id);
@@ -94,7 +94,7 @@ async function tick(slot) {
   try {
     const origin = current;
     void verify().then(rows => {
-      if (current.budget !== budget || current.floor !== floor) return;
+      if (current.budget !== budget || current.floor !== floor || current.maxImpact !== maxImpact) return;
       const possible = new Set(current.eligible);
       for (const id of batch) qualified.delete(id);
       for (const row of rows) if (possible.has(row.id) && row.expires > Date.now()) qualified.set(row.id,row);
