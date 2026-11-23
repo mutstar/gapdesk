@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import {TradeLeg} from './trade-leg';
 import {ContractCopy} from './contract-copy';
 
 type Leg={kind:string,name:string,contract?:string,chain?:number,token?:string,fundingRate?:number|null,intervalHours?:number|null,nextFundingAt?:number|null,openInterestUsdt?:number|null};
@@ -13,13 +14,12 @@ function countdown(next:number,now:number){
 }
 function MarketLeg({leg,buy,price,now}:{leg:Leg,buy:boolean,price:number,now:number}){
   const perp=leg.kind==='PERP',rate=leg.fundingRate;
-  return <div className="basisLeg"><div><b>{perp?(buy?'선물 롱':'선물 숏'):(buy?'현물 매수':'현물 매도')}</b><span>{leg.name.replace(/ 선물$/,'')}</span></div>
-    <strong>{fmt(price)} <small>USDC</small></strong>{leg.contract&&<small>{leg.contract}</small>}
+  return <TradeLeg side={buy?'buy':'sell'} perp={perp} venue={leg.name} price={price} caption={leg.contract}>
     {perp&&<><small>펀딩 {rate==null?'미확인':(rate>0?'+':'')+(rate*100).toFixed(4)+'%'}{leg.intervalHours?' / '+leg.intervalHours+'시간':''}</small>
       <small>다음 정산 {leg.nextFundingAt?countdown(leg.nextFundingAt,now):'미확인'}</small>
       <small>미결제약정 {leg.openInterestUsdt==null?'미확인':new Intl.NumberFormat('en',{notation:'compact',maximumFractionDigits:2}).format(leg.openInterestUsdt)+' USDT'}</small></>}
     {leg.chain&&leg.token&&<ContractCopy item={{chain:leg.chain,token:leg.token}}/>}
-  </div>
+  </TradeLeg>
 }
 export function FuturesBoard({book,now,budget,busy}:{book?:FuturesBook,now:number,budget:number,busy:boolean}){
   const [type,setType]=useState('all'),[search,setSearch]=useState(''),[min,setMin]=useState('0.1'),[limit,setLimit]=useState(10);
@@ -28,7 +28,7 @@ export function FuturesBoard({book,now,budget,busy}:{book?:FuturesBook,now:numbe
     <div className="tabs" aria-label="선물 조합">{[['all','전체'],['perp_spot','현물–선물'],['perp_perp','선물–선물']].map(([v,l])=><button key={v} aria-pressed={v===type} className={v===type?'selected':''} onClick={()=>{setType(v);setLimit(10)}}>{l}</button>)}</div>
     <div className="basisFilters"><label>토큰 검색<input type="search" placeholder="ACE, BTC…" value={search} onChange={e=>{setSearch(e.target.value);setLimit(10)}}/></label><label>최소 진입 갭 (%)<input type="number" min="0" step="0.1" value={min} onChange={e=>{setMin(e.target.value);setLimit(10)}}/></label></div>
     {rows.slice(0,limit).map(r=><article key={r.id} className="signalCard basisCard"><header><strong>{r.symbol}</strong><span>{r.kind==='perp_perp'?'선물–선물':'현물–선물'}</span><b>+{r.gap.toFixed(3)}%</b></header>
-      <div className="basisLegs"><MarketLeg leg={r.buy} buy price={r.ask} now={now}/><MarketLeg leg={r.sell} buy={false} price={r.bid} now={now}/></div>
+      <div className="tradePair"><MarketLeg leg={r.buy} buy price={r.ask} now={now}/><MarketLeg leg={r.sell} buy={false} price={r.bid} now={now}/></div>
       <p>비교 수량 {fmt(r.qty)} {r.symbol} · 매수 기준 {fmt(r.notional)} USDC{r.sell.kind!=='PERP'?' · 현물 보유 또는 차입 필요':''}</p></article>)}
     {!rows.length&&<div className="signalEmpty" role="status">{!book||!book.priced?busy?'선물 호가를 조회하고 있어요.':'최신 선물 호가를 기다리고 있어요.':'현재 금액과 필터를 충족하는 최신 선물 갭이 없어요.'}</div>}
     {rows.length>limit&&<div className="pageBar"><button onClick={()=>setLimit(limit+10)}>10건 더 보기</button></div>}

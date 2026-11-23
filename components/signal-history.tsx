@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {TradeLeg} from './trade-leg';
 import {ArrowDownRight,ArrowUpRight,Clock3,Search} from 'lucide-react';
 
 type Row=Record<string,any>;
@@ -14,7 +15,10 @@ function GapRow({r}:{r:Row}){
   const active=r.state==='active';
   return <article className="signalCard">
     <div className="signalHead"><strong>{r.symbol}</strong><span className={'verdict '+r.status}>{verdict[r.status]||'미확인'}</span><time>{kst(r.openedAt)} KST 최초 감지</time></div>
-    <div className="signalRoute">{r.buy} → {r.sell}</div>
+    <div className="tradePair">
+      <TradeLeg side="buy" venue={r.buy} perp={r.status.startsWith('perp_')&&r.buy.endsWith(' 선물')} price={r.entryAsk} caption="최초 감지 가격"/>
+      <TradeLeg side="sell" venue={r.sell} perp={r.status.startsWith('perp_')&&r.sell.endsWith(' 선물')} price={r.entryBid} caption="최초 감지 가격"/>
+    </div>
     <div className="signalNumbers"><span>최초 갭 <b>+{display(r.entryGap)}%</b></span><span>{active?'최근 갭':'마지막 관측 갭'} <b>+{display(r.latestGap)}%</b></span>
     {r.status==='passed'&&<span>당시 예상 순차익 <b>+{display(r.profit,4)} USDC</b></span>}</div>
     <p>당시 {display(r.budget)} USDC {r.status.startsWith('perp_')?'· 수수료·펀딩 전':'· 최소 순차익 '+display(r.floor)+' USDC'} · DEX 허용 차이 {display(r.maxImpact)}%</p>
@@ -39,7 +43,7 @@ function Earlier({symbol,before}:{symbol:string,before:number}){
     }).catch(()=>{if(!c.signal.aborted)setError(true)}).finally(()=>{if(!c.signal.aborted)setBusy(false)});return()=>c.abort();
   },[symbol,before]);
   return <details className="pastSignals"><summary>기존 24시간 기록 · {symbol}</summary><p>기존 수집기는 시간대별 최고 갭을 저장했어요. 최초 시각과 당시 설정 금액은 기록 전입니다.</p>
-    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · {r.buy} → {r.sell} · {display(r.gap)}% · {r.kind}</p>)}
+    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · 사는 곳 {r.buy} · 파는 곳 {r.sell} · {display(r.gap)}% · {r.kind}</p>)}
     {!rows.length&&<p>{busy?'조회 중…':error?'기존 기록을 불러오지 못했어요.':'이 심볼의 이전 기록이 없어요.'}</p>}</details>
 }
 export function SignalHistory({kind,revision}:Props){

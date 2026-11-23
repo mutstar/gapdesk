@@ -146,3 +146,26 @@
 .basisLeg>div{flex-wrap:wrap;gap:5px;font-size:.85rem;align-items:center}.basisLeg>strong,.basisLeg>small{display:block;margin-top:3px}
 .basisLeg>strong{font-variant-numeric:tabular-nums}.basisNote{padding:12px 20px;color:#49647b;font-size:.88rem;line-height:1.65}
 @media(max-width:680px){.mast nav{display:flex;overflow-x:auto;justify-content:space-between;gap:10px}.mast nav button{flex:0 0 auto}.basisFilters{padding-inline:12px}.basisLeg{padding:8px}.basisLegs{gap:6px}}
+
+.marketCard{padding:15px 20px;border-block-start:1px solid #d6e4ef}
+.marketCardHead,.marketTools,.marketActions,.gapValue{display:flex;align-items:center;flex-wrap:wrap}
+.marketCardHead,.marketTools{justify-content:space-between;gap:6px 12px}
+.marketCardHead h3{margin:0;color:#162f48;font-size:1.18rem;letter-spacing:-.02em;overflow-wrap:anywhere}
+.gapValue{gap:7px;font-variant-numeric:tabular-nums}.gapValue span,.marketActions>small{font-size:.81rem;color:#53677b}
+.gapValue strong{font-size:1.08rem;color:#264f7b}.gapValue.qualifiedGain strong{color:#146345}
+.tradePair{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:9px 0}
+.tradeLeg{--edge:#a9d8c8;--ink:#165a46;--surface:#f1faf6;display:flex;align-items:flex-start;flex-direction:column;min-width:0;overflow-wrap:anywhere;padding:9px 12px;border:1px solid var(--edge);border-radius:8px;background:var(--surface);color:#233d50}
+.tradeLeg.sell{--edge:#ebc5c4;--ink:#8e3b43;--surface:#fff6f5}
+.legAction{display:flex;align-items:center;gap:6px;color:var(--ink);font-size:.85rem;font-weight:700}
+.legAction:before{content:'';width:7px;height:7px;border-radius:50%;background:var(--ink)}
+.legVenue{margin-top:1px;font-size:1.07rem;line-height:1.3}.legPrice,.legTotal{font-variant-numeric:tabular-nums;margin-top:3px;font-size:.94rem}
+.legPrice small,.tradeLeg>small{color:#536676;font-size:.81rem}.tradeLeg>small{margin-top:3px}
+.marketActions{gap:5px}.marketState{color:#4c6176;font-size:.83rem;font-weight:600}
+.marketDetail{padding:12px;margin-top:9px;border-radius:8px;background:#f1f7fc}
+.marketDetail select,.marketDetail input{max-width:100%}.mobileSettings{display:none}
+@media(max-width:610px){
+ .marketCard{padding:12px}.tradePair{gap:7px}.tradeLeg{padding:8px 9px}.legVenue{font-size:1rem}
+ .workspace .controls,.workspace.historyWorkspace .controls{grid-row:1}.workspace .board,.workspace.historyWorkspace .board{grid-row:2}
+ .controls .panelHead{padding:10px 14px}.mobileSettings{display:inline-flex;align-items:center;padding:6px 9px;color:#245578;border:1px solid #b9d2e3;border-radius:6px;background:white}
+ .controls:not(.settingsExpanded) form,.controls:not(.settingsExpanded) .scanCounts{display:none}
+}
