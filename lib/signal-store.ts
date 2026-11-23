@@ -118,9 +118,10 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
     const rightLeg="substr(route_id,instr(route_id,'|')+1)";
     const right=`substr(${rightLeg},1,instr(${rightLeg},':')-1)`;
     const cex="('bitget','kucoin','binance','bithumb','gate')";
+    const isCex=(v:string)=>`(${v} IN ${cex} OR ${v} LIKE 'cex-%')`;
     if(family==='DEX–DEX')clauses.push(`${left}='dex' AND ${right}='dex'`);
-    if(family==='CEX–CEX')clauses.push(`${left} IN ${cex} AND ${right} IN ${cex}`);
-    if(family==='DEX–CEX')clauses.push(`((${left}='dex' AND ${right} IN ${cex}) OR (${right}='dex' AND ${left} IN ${cex}))`);
+    if(family==='CEX–CEX')clauses.push(`${isCex(left)} AND ${isCex(right)}`);
+    if(family==='DEX–CEX')clauses.push(`((${left}='dex' AND ${isCex(right)}) OR (${right}='dex' AND ${isCex(left)}))`);
   }
   if(screened)clauses.push("(status IN ('passed','perp_spot','perp_perp') OR reason='동일 네트워크 이동 경로 확인')");
   let anchor=now;

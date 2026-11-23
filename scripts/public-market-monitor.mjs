@@ -10,6 +10,7 @@ import {poolValuationAssets} from '../lib/pool-anchors.mjs';
 import {prepareScan} from '../lib/universe.mjs';
 import {createIndexedPoolReader,readIndexedPools} from '../lib/indexed-pools.mjs';
 import {recentV4Pools} from '../lib/v4-discovery.mjs';
+import {readWideFiles,wideMarkets} from '../lib/wide-markets.mjs';
 import {poolType,readPools} from '../lib/pool-reader.mjs';
 import {startFactoryRegistry} from '../lib/factory-registry.mjs';
 import {startRegistry} from '../lib/pool-registry.mjs';
@@ -121,7 +122,9 @@ async function tick(slot) {
     return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
+  const wide=readWideFiles();
   const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,onProgress:progress,signals:true,
+    extraCex:async native=>wideMarkets(await wide,native),
     previousCandidates:current?new Set(current.eligible):null});
   const sameConfig = current?.budget === budget && current?.floor === floor && current?.maxImpact === maxImpact;
   if (!sameConfig) qualified.clear();

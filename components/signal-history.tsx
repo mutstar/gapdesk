@@ -30,10 +30,11 @@ function GapRow({r}:{r:Row}){
   </article>
 }
 function SpikeRow({r}:{r:Row}){
+  const unitMatch=/:(bbo|last):([^:]+)$/.exec(r.marketId||''), unit=unitMatch?decodeURIComponent(unitMatch[2]):'USDC', last=unitMatch?.[1]==='last';
   const up=r.side==='up', poolMark=r.venue?.startsWith('Uniswap V4 ·');
-  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
+  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {last?(up?'체결가 급등':'체결가 급락'):poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
     <div className="signalRoute">{r.venue} · {windowText(r.windowSec)} 구간</div>
-    <div className="signalNumbers"><span>{poolMark?'기준 풀 가격':up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{poolMark?'감지 풀 가격':up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} USDC</b></span></div>
+    <div className="signalNumbers"><span>{last?'기준 체결가':poolMark?'기준 풀 가격':up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{last?'감지 체결가':poolMark?'감지 풀 가격':up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} {unit}</b></span></div>
     <p>기준 {kst(r.baselineAt)} KST · {r.corroborated?'타 거래소 시세 대조됨':'단일 거래소 관측'}</p></article>
 }
 function Earlier({symbol,before}:{symbol:string,before:number}){
