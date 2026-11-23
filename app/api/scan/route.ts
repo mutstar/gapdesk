@@ -1,4 +1,4 @@
-import {latestRelay} from '../../../lib/relay';
+import {latestRelay,relayChanged} from '../../../lib/relay';
 import {wideScan} from '../../../lib/universe.mjs';
 import {readState,writeState,logScan} from '../../../lib/scan-store';
 const valid=(budget:number,floor:number)=>Number.isFinite(budget)&&budget>=10&&budget<=100000&&Number.isFinite(floor)&&floor>=0&&floor<=100000;
@@ -11,8 +11,13 @@ export async function GET(req:Request){
  }
  const cursor=p.get('cursor')||'',poolCursor=Number(p.get('pool')||0);
  if(cursor.length>500||!Number.isSafeInteger(poolCursor)||poolCursor<0)return new Response('커서 오류',{status:400});
- const relay=await latestRelay(budget,floor,only).catch(()=>null);
+ if(p.get('updates')==='1'&&!only){
+   const changed=await relayChanged(budget,floor,p.get('revision')||'').catch(()=>false);
+   if(!changed)return new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
+ }
+ const relay=only&&address?null:await latestRelay(budget,floor,only).catch(()=>null);
  if(relay)return Response.json(relay,{headers:{'Cache-Control':'no-store'}});
+ if(p.get('updates')==='1')return new Response(null,{status:204,headers:{'Cache-Control':'no-store'}});
  const data=await wideScan({budget,floor,address,only,cursor,poolCursor});
  let recorded=false;if(!only)try{await logScan(data);recorded=true}catch{}
  return Response.json({...data,mode:'클라우드 직접 조회',recorded},{headers:{'Cache-Control':'no-store'}});
