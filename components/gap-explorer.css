@@ -1,0 +1,106 @@
+.gapQuoteList {
+  container: gapquotes / inline-size;
+  margin: 0 20px 18px;
+}
+.gapQuoteList table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: .91rem;
+  font-variant-numeric: tabular-nums;
+}
+.gapQuoteList thead {
+  color: #536e82;
+  background: #f1f7fb;
+}
+.gapQuoteList th, .gapQuoteList td {
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+.gapQuoteList thead th {
+  font-size: .76rem;
+  font-weight: 650;
+  padding-block: 8px;
+}
+.gapQuoteList thead th:first-child { width: 25%; }
+.gapQuoteList thead th:nth-child(2), .gapQuoteList thead th:nth-child(3) { width: 22%; }
+.gapQuoteList thead th:nth-child(4) { width: 15%; }
+.gapQuoteList thead th:last-child { width: 16%; }
+.gapQuoteRow { border-bottom: 1px solid #dce8f0; }
+.gapAsset > strong { display: block; font-size: 1.01rem; }
+.gapQuoteList .caCopy, .gapQuoteList .nativeCA {
+  margin: 3px 0 0;
+  padding: 2px 4px;
+  min-height: 24px;
+  font-size: .69rem;
+  font-weight: 500;
+}
+.gapQuoteList .caCopy { max-width: 100%; flex-wrap: wrap; gap: 3px; }
+.gapQuoteList .caCopy code { font-size: inherit; }
+.gapVenue { display: flex; align-items: baseline; gap: 5px; }
+.gapVenue strong { line-height: 1.3; }
+.gapLegLabel { display: none; }
+.gapLegLabel.gapPerp {
+  display: inline;
+  flex: none;
+  font-size: .67rem;
+  font-weight: 650;
+  color: #536b84;
+}
+.gapLegPrice { color: #405d75; font-size: .83rem; margin-top: 3px; }
+.gapLegPrice small, .gapFunding { font-size: .69rem; color: #627a8a; }
+.gapQuoteValue b { color: #106b56; font-size: .97rem; }
+.gapRouteAction {
+  display: block;
+  padding: 1px 0;
+  text-align: left;
+  color: #155f98;
+  font-size: .72rem;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.gapQuoteTime { color: #4a647a; font-size: .82rem; }
+.gapQuoteTime time { white-space: nowrap; }
+.gapQuoteTime time > span { display: block; }
+.gapQuoteTime time small { display: none; }
+.gapPrevious {
+  display: block;
+  font-size: .68rem;
+  color: #687e90;
+}
+.gapQuoteRow[data-state="previous"] { background-color: #f8fafc; }
+.gapQuoteRow[data-state="previous"] :is(.gapVenue strong,.gapAsset > strong,.gapQuoteValue b,.gapLegPrice,.gapQuoteTime) { color: #5a7083; }
+@container gapquotes (max-width: 640px) {
+  .gapQuoteList table, .gapQuoteList tbody { display: block; }
+  .gapQuoteList thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .gapQuoteRow {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+    grid-template-areas: "asset gap" "buy sell" "time time";
+    gap: 7px 12px;
+    padding: 10px 4px;
+  }
+  .gapQuoteList .gapQuoteRow > * { padding: 0; }
+  .gapAsset { grid-area: asset; }
+  .gapQuoteBuy { grid-area: buy; }
+  .gapQuoteSell { grid-area: sell; }
+  .gapQuoteList .gapQuoteValue { grid-area: gap; text-align: right; }
+  .gapQuoteValue button { margin-left: auto; text-align: right; }
+  .gapQuoteTime { grid-area: time; display: flex; align-items: center; gap: 6px; }
+  .gapQuoteTime time > span, .gapQuoteTime time small { display: inline; }
+  .gapLegLabel,.gapLegLabel.gapPerp { display: inline; flex: none; font-size: .7rem; font-weight: 650; }
+  .gapQuoteBuy .gapLegLabel { color: #157458; }
+  .gapQuoteSell .gapLegLabel { color: #954156; }
+}
+@media (max-width: 560px) {
+  .gapQuoteList { margin-inline: 12px; }
+}

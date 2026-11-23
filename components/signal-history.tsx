@@ -12,7 +12,7 @@ const display=(n:number,places=2)=>Number(n).toLocaleString('ko-KR',{maximumFrac
 const price=(n:number)=>Number(n).toLocaleString('en-US',{maximumSignificantDigits:8});
 const kst=(n:number)=>new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(n);
 const windowText=(sec:number)=>sec<60?sec+'초':sec<3600?(sec/60)+'분':(sec/3600)+'시간';
-const verdict:Record<string,string>={perp_spot:'현물–선물 진입 갭',perp_perp:'선물–선물 진입 갭',passed:'당시 견적 통과',below_floor:'당시 순차익 미달',blocked:'당시 이동 불가',unconfirmed:'실행 견적 미확정',unchecked:'당시 정밀 견적 없음'};
+const verdict:Record<string,string>={perp_spot:'현물–선물 진입 갭',perp_perp:'선물–선물 진입 갭',passed:'당시 견적 통과',below_floor:'당시 조건 미충족',blocked:'당시 조건 미충족',unconfirmed:'실행 견적 미확정',unchecked:'당시 정밀 견적 없음'};
 function GapRow({r}:{r:Row}){
   const active=r.state==='active';
   return <article className="signalCard">
@@ -25,7 +25,6 @@ function GapRow({r}:{r:Row}){
     <div className="signalNumbers"><span>최초 갭 <b>+{display(r.entryGap)}%</b></span><span>{active?'최근 갭':'마지막 관측 갭'} <b>+{display(r.latestGap)}%</b></span>
     {r.status==='passed'&&<span>당시 예상 순차익 <b>+{display(r.profit,4)} USDC</b></span>}</div>
     <p>당시 {display(r.budget)} USDC {r.status.startsWith('perp_')?'· 수수료·펀딩 전':'· 최소 순차익 '+display(r.floor)+' USDC'} · DEX 허용 차이 {display(r.maxImpact)}%</p>
-    {r.reason&&<p>{r.reason}</p>}
     <details><summary>가격과 관측 시각</summary><p>매수 {price(r.entryAsk)} → {price(r.latestAsk)} USDC · 매도 {price(r.entryBid)} → {price(r.latestBid)} USDC</p>
     <p>마지막 관측 {kst(r.lastSeen)} KST · {active?'관측 중':r.state==='closed'?'관측 종료':'수집 또는 조건 변경으로 관측 중단'}{r.checkedAt?' · 견적 확인 '+kst(r.checkedAt)+' KST':''}</p></details>
   </article>
@@ -72,7 +71,7 @@ export function SignalHistory({kind,revision}:Props){
     <div className="signalFilters"><label><Search size={14}/> 토큰<input type="search" placeholder="예: ACE" value={symbol} onChange={e=>{setSymbol(e.target.value);first()}}/></label>
     <label>기간<select value={hours} onChange={e=>{setHours(Number(e.target.value));first()}}>{[[1,'1시간'],[6,'6시간'],[24,'24시간'],[168,'7일']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label>거래소<input list="signal-venues" placeholder="전체 · 이름 입력" value={venue} onChange={e=>{setVenue(e.target.value);first()}}/><datalist id="signal-venues">{['빗썸','KuCoin','Bitget','Binance 선물','KuCoin 선물','Bitget 선물','uniswap · Ethereum','pancakeswap · BNB Chain','uniswap · Base','uniswap · Arbitrum'].map(v=><option key={v} value={v}/>)}</datalist></label></div>
-    {gaps&&<label className="rawHistory"><input type="checkbox" checked={raw} onChange={e=>{setRaw(e.target.checked);first()}}/> 차단·경로 미확인 기록도 보기</label>}
+    {gaps&&<label className="rawHistory"><input type="checkbox" checked={raw} onChange={e=>{setRaw(e.target.checked);first()}}/> 전체 관측 기록 보기</label>}
     {error&&<div role="alert" className="signalEmpty">기록을 불러오지 못했어요. <button onClick={()=>setRetry(n=>n+1)}>다시 조회</button></div>}
     {data?.items.map(r=>gaps?<GapRow key={r.id} r={r}/>:<SpikeRow key={r.id} r={r}/>)}
     {!error&&!data?.items.length&&<p className="signalEmpty">{!data?'감지 기록을 조회하고 있어요.':'이 조건에서 감지된 기록이 없어요.'}</p>}
