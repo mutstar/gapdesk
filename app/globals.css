@@ -192,3 +192,22 @@
 .marketArrivals li{display:flex;gap:.35rem .7rem;align-items:baseline;flex-wrap:wrap;padding:.42rem 0;border-bottom:1px solid #e6edf1}
 .marketArrivals li:last-child{border:0}
 .marketArrivals li time{margin-left:auto;font-size:.72rem;font-variant-numeric:tabular-nums}
+
+.routeReason{margin:.55rem 0 .65rem;padding:.6rem .8rem;border-inline-start:3px solid #c18456;background:#fff7ed;color:#67431e;text-align:start;overflow-wrap:anywhere}
+.routeReason.reasonNeutral{border-color:#93afc7;background:#f0f5fa;color:#334f68}
+.routeReason.reasonPassed{border-color:#56ab91;background:#eef8f3;color:#245d4a}
+.routeReason>div,.reasonPanelHead,.blockedHead,.blockedPages{display:flex;align-items:baseline;flex-wrap:wrap;gap:.25rem .6rem}
+.routeReason strong,.reasonPanelHead h3,.blockedHead>strong{font-size:1rem;line-height:1.4}
+.routeReason small,.reasonPanelHead>span,.blockedVenues time{color:#506275;font-size:.8125rem}
+.signalCard .routeReason p,.routeReason p{margin:.2rem 0 0;color:inherit;text-align:start;font-size:.9rem;line-height:1.5}
+.signalCard .routeReason p.olderCheck{color:#506275;font-size:.8125rem}
+.blockedRoutes,.gapReasonSummary{margin:1rem 1.2rem;padding:.8rem 1rem;border:1px solid #ccdce9;border-radius:10px;background:#fff}
+.reasonPanelHead{justify-content:space-between;align-items:center}.reasonPanelHead h3{margin:0;color:#223f58}
+.blockedRoute{padding:.55rem 0;border-block-start:1px solid #dbe6ef}.blockedRoutes .reasonPanelHead{margin-bottom:.45rem}
+.blockedRoute:last-child{padding-block-end:0}.blockedRoute .routeReason{margin-block:.4rem 0}
+.blockedHead>span,.blockedVenues{font-size:.875rem;color:#475e74;overflow-wrap:anywhere}
+.blockedHead>button{margin-left:auto}.blockedPages button{border:0;background:transparent;color:#285a87;padding:.35rem 0;font-size:.875rem;font-weight:650}
+.gapReasonSummary p{color:#475e74;font-size:.9rem;line-height:1.5;margin:.65rem 0}.gapReasonSummary ul{list-style:none;margin:.5rem 0 0;padding:0}
+.gapReasonSummary li{padding:.55rem 0;border-top:1px solid #dbe6ef;color:#29455e}.gapReasonSummary li>div{display:flex;align-items:center;justify-content:space-between;gap:.55rem}
+.gapReasonSummary li small{display:block;margin-top:.16rem;line-height:1.45;font-size:.875rem;color:#455c71;overflow-wrap:anywhere}
+@media(max-width:610px){.blockedRoutes,.gapReasonSummary{margin:.65rem .75rem;padding:.65rem .7rem}}

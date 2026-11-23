@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {displayedObservations,mergeFrame} from '../lib/observation-window.mjs';
+import {currentQualifiedRows,displayedObservations,mergeFrame} from '../lib/observation-window.mjs';
 const now=2_000_000,token='0x'+'1'.repeat(40);
 function row(id,time,kind='CEX'){
   return {id,time,symbol:'ACE',gap:8,match:{chain:1,token},kind:'spot_spot',buy:{kind},sell:{kind:'CEX'}};
@@ -32,4 +32,17 @@ test('expiry is driven by original timestamps even when refresh is paused or rep
   assert.equal(displayedObservations(state,now,true)[0].previous,true);
   assert.equal(displayedObservations(state,now+15000)[0].previous,true);
   assert.deepEqual(displayedObservations(state,now+90000),[]);
+});
+
+test('newer matching failure or suspension withholds previously confirmed route from the qualified board',()=>{
+  const candidate={...row('id',now-1000),buyQuoteAt:now-2000,sellQuoteAt:now-2000,verifiedAt:now-1000,expires:now+40000};
+  const snapshot={...old,rows:[candidate]};
+  const suspension={...candidate,networkAt:now-100,diagnosis:{code:'deposit_closed'}};
+  const book={...frame(now-500,false,[]),diagnosticGaps:[suspension]};
+  assert.equal(currentQualifiedRows(snapshot,book,now).length,0);
+  assert.equal(currentQualifiedRows(snapshot,{...book,budget:500},now).length,1);
+  assert.equal(currentQualifiedRows(snapshot,{...book,diagnosticGaps:[{...suspension,networkAt:now-3000}]},now).length,1);
+  const failed={...candidate,cycle:book.startedAt,checkedAt:now-10,status:'unconfirmed'};
+  assert.equal(currentQualifiedRows(snapshot,{...book,diagnosticGaps:[],routeChecks:[failed]},now).length,0);
+  assert.equal(currentQualifiedRows(snapshot,{...book,diagnosticGaps:[],routeChecks:[{...failed,match:{chain:56,token}}]},now).length,1);
 });

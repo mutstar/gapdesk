@@ -59,7 +59,7 @@ async function publish(snapshot) {
   } finally { publishing = false; }
 }
 // Keep the smaller observation channel independent of full catalogue uploads.
-let queuedBook, sendingBook=false, lastBook;
+let queuedBook, sendingBook=false, lastBook, activeSlot=0;
 async function sendBook(frame){
   queuedBook=frame;
   if(sendingBook)return;
@@ -80,10 +80,15 @@ async function tick(slot) {
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
   let seq=0, latest;
   const config={budget,floor,maxImpact};
-  const previous=sameSettings(lastBook,config) && Date.now()-lastBook.at<120000 ? lastBook : undefined;
+  activeSlot=slot;
   const progress=frame=>{
     latest={...observationFrame(frame,frame.complete),seq:++seq};
-    void sendBook({...latest,previous:latest.complete?undefined:previous});
+    // A precision check for the preceding slot can finish during this scan.
+    if(latest.complete && (!lastBook||lastBook.startedAt<=slot))lastBook=latest;
+    if(activeSlot!==slot)return;
+    const previous=!latest.complete && sameSettings(lastBook,config) && lastBook.startedAt<slot &&
+      Date.now()-lastBook.at<120000 ? lastBook : undefined;
+    void sendBook({...latest,previous});
   };
   progress({...config,startedAt:slot,at:Date.now(),complete:false,futures:{rows:[]}});
   const poolPass = async (markets,cex,onMarkets) => {
@@ -121,7 +126,6 @@ async function tick(slot) {
   const batch = snapshot.attempted;
   current = Object.assign(snapshot, {floor,intervalMs:interval,tested:0,attempted:[],verificationPending:!checking && batch.length>0});
   progress({...current,complete:true});
-  lastBook=latest;
   poolCursor = current.poolCursor;
   void publish(current);
   const frame={startedAt:slot,at:snapshot.at,budget,floor,maxImpact,signalGaps:signalData.gaps,signalMarketIds:signalData.marketIds,entryChecks:[],
@@ -133,14 +137,20 @@ async function tick(slot) {
   try {
     const origin = current;
     const entryChecks=[];
-    void verify(check=>entryChecks.push(check)).then(async rows => {
-      await outbox.put({...frame,entryChecks});
+    void verify(check=>{
+      const {id,match,cycle,checkedAt,status,profit}=check;
+      entryChecks.push({id,match,cycle,checkedAt,status,profit});
+      origin.routeChecks=[...origin.routeChecks,check];
+      progress({...origin,complete:true});
+    }).then(async rows => {
+      const record=outbox.put({...frame,entryChecks}).catch(failed);
       if (current.budget !== budget || current.floor !== floor || current.maxImpact !== maxImpact) return;
       const possible = new Set(current.eligible);
       for (const id of batch) qualified.delete(id);
       for (const row of rows) if (possible.has(row.id) && isFreshQualified(row)) qualified.set(row.id,row);
       if (current === origin) Object.assign(current,{tested:batch.length,attempted:batch,verificationPending:false});
       void publish(current);
+      await record;
     }).catch(failed).finally(() => {checking=false;});
   } catch (error) {checking=false;throw error;}
 }

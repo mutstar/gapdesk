@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createObservationProgress} from '../lib/live-observations.mjs';
-import {discover,prepareScan} from '../lib/universe.mjs';
+import {discover,prepareScan,wideScan} from '../lib/universe.mjs';
+import {observationFrame} from '../lib/observation-window.mjs';
 import {CHAINS} from '../lib/assets.js';
 
 function deferred(){
@@ -79,7 +80,8 @@ test('a modeled DEX pair appears at its block time before a slower pool read com
       depth:{chain:1,pool:address,block:55,time:startedAt,dexId:'uniswap',protocol:'v2',feePpm:3000,
         token0:token,token1:CHAINS[1].usdc,decimals0:6,decimals1:6,reserve0:'10000000000000',reserve1:String(price*1e13)}};
   }
-  const markets=[pool('a',1),pool('b',2)];
+  const reference=pool('c',3); delete reference.depth;
+  const markets=[pool('a',1),pool('b',2),reference];
   let completed=false;
   const scan=prepareScan({budget:1000,floor:5,startedAt,poolPass:async(_assets,_cex,onMarkets)=>{
     onMarkets(markets);
@@ -92,9 +94,23 @@ test('a modeled DEX pair appears at its block time before a slower pool read com
     assert.equal(completed,false);
     assert.equal(frame.spotGaps[0].time,startedAt);
     assert.deepEqual(frame.recentMarkets.filter(m=>m.kind==='DEX').map(m=>m.pool),markets.map(m=>m.pool));
-    assert.equal(frame.sources.find(s=>s.id==='pools-1').count,2);
+    assert.equal(frame.sources.find(s=>s.id==='pools-1').count,3);
     remaining.resolve();
-    const {snapshot}=await scan;
+    const {snapshot,verify}=await scan;
     assert.deepEqual(frame.spotGaps,snapshot.spotGaps);
+    assert.equal(frame.diagnosticGaps[0].diagnosis.code,'depth_unverified');
+    assert.deepEqual(frame.diagnosticGaps,snapshot.diagnosticGaps);
+    const failed=[];
+    assert.deepEqual(await verify(check=>failed.push(check)),[]);
+    assert.equal(failed.length,1);
+    assert.equal(failed[0].id,frame.spotGaps[0].id);
+    assert.equal(failed[0].cycle,startedAt);
+    assert.equal(failed[0].diagnosis.code,'unverified');
+    assert.ok(!snapshot.eligible.includes(frame.diagnosticGaps[0].id));
+    const full=await wideScan({budget:1000,floor:5,startedAt,poolPass:async()=>({markets})});
+    const book=observationFrame(full,true);
+    assert.equal(full.rows.length,0);
+    assert.equal(book.routeChecks[0].diagnosis.code,'unverified');
+    assert.deepEqual(book.diagnosticGaps,frame.diagnosticGaps);
   }finally{remaining.resolve();await scan;globalThis.fetch=original}
 });
