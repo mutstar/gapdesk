@@ -13,22 +13,6 @@ const chains:Record<string,{name:string,gas:string,explorer:string}>=CHAINS;
 const pairs=['전체','DEX–DEX','CEX–DEX','CEX–CEX'];
 const format=(v:number,d=2)=>v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
 const tm=(v:number)=>new Date(v).toLocaleTimeString('ko-KR',{hour12:false,timeZone:'Asia/Seoul'});
-function Plot({data}:{data:Row[]}){
- const ref=useRef<HTMLCanvasElement>(null);
- useEffect(()=>{const el=ref.current;if(!el)return;
- function draw(){if(!el)return;const box=el.getBoundingClientRect(),w=box.width,h=box.height,dpr=window.devicePixelRatio||1;
- el.width=w*dpr;el.height=h*dpr;const ctx=el.getContext('2d');if(!ctx)return;ctx.scale(dpr,dpr);
- ctx.strokeStyle='#a9c9e4';ctx.lineWidth=.7;ctx.setLineDash([3,5]);
- for(let y=12;y<h;y+=27){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
- for(let x=12;x<w;x+=w/8){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
- if(data.length<2)return;const values=data.map(x=>x.price),lo=Math.min(...values),hi=Math.max(...values);
- const pts=values.map((v,i)=>[3+i*(w-10)/(values.length-1),h-10-(v-lo)/(hi-lo||1)*(h-25)]);
- ctx.setLineDash([]);ctx.beginPath();pts.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.lineWidth=2.5;ctx.strokeStyle='#2277b7';ctx.stroke();
- const grad=ctx.createLinearGradient(0,5,0,h);grad.addColorStop(0,'rgba(68,159,228,.22)');grad.addColorStop(1,'rgba(68,159,228,0)');ctx.lineTo(w-7,h);ctx.lineTo(3,h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
- const [x,y]=pts.at(-1)!;ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle='#c75c19';ctx.fill();
- }const obs=new ResizeObserver(draw);obs.observe(el);draw();return()=>obs.disconnect()},[data]);
- return <canvas ref={ref} role="img" aria-label="최근 24개 시간봉의 ETH 가격 추이"/>;
-}
 async function scan(amount:number,floor:number,address='',only='',signal?:AbortSignal,cursor='',pool=0){
  const q=new URLSearchParams({amount:String(amount),floor:String(floor)});if(address)q.set('address',address);if(only)q.set('only',only);if(cursor)q.set('cursor',cursor);q.set('pool',String(pool));
  const r=await fetch('/api/scan?'+q,{cache:'no-store',signal});if(!r.ok)throw Error('스캔 서버에 연결할 수 없습니다.');return r.json() as Promise<Row>;
@@ -37,7 +21,7 @@ export default function Home(){
  const [view,setView]=useState('전체 토큰'),[pair,setPair]=useState('전체'),[amount,setAmount]=useState('1000'),[min,setMin]=useState('5');
  const [settingsNote,setSettingsNote]=useState('');
  const [settings,apply]=useState({amount:1000,min:5}),[own,setOwn]=useState(false),[auto,setAuto]=useState(true),[tick,reset]=useState(0);
- const [snapshot,setSnapshot]=useState<Row|null>(null),[candles,setCandles]=useState<Row[]>([]),[busy,setBusy]=useState(true),[err,setErr]=useState(''),[now,setNow]=useState(0);
+ const [snapshot,setSnapshot]=useState<Row|null>(null),[busy,setBusy]=useState(true),[err,setErr]=useState(''),[now,setNow]=useState(0);
  const [address,setAddress]=useState(''),[balances,setBalances]=useState<Row>({}),[note,setNote]=useState(''),[walletOpen,showWallet]=useState(false);
  const [selected,select]=useState<Row|null>(null),[jobState,setJobState]=useState<Row|null>(null),[acting,setActing]=useState(false),[jobNote,setJobNote]=useState('');
  const cycle=useRef({cursor:'',pool:0}),lock=useRef(false),modalRef=useRef<HTMLDialogElement>(null);
@@ -54,7 +38,6 @@ export default function Home(){
  const freshIds=new Set(v.eligible),attempted=new Set(v.attempted);
  setSnapshot((old:Row|null)=>{const retained=(old?.rows||[]).filter((r:Row)=>r.expires>Date.now()&&freshIds.has(r.id)&&!attempted.has(r.id));return {...v,rows:[...v.rows,...retained].sort((a,b)=>b.profit-a.profit)}});setErr('')}}catch{if(live){setSnapshot(null);setErr('데이터를 받지 못했습니다. 새로고침으로 다시 시도하세요.')}}finally{if(live){setBusy(false);if(auto)timer=setTimeout(run,8000)}}}
  setSnapshot(null);run();return()=>{live=false;controller.abort();clearTimeout(timer)}},[settings,address,auto,tick]);
- useEffect(()=>{let active=true;const load=()=>fetch('/api/history').then(r=>r.json()).then(v=>{if(active&&Array.isArray(v))setCandles(v)}).catch(()=>{});load();const t=setInterval(load,300000);return()=>{active=false;clearInterval(t)}},[]);
  const modal=!!selected||walletOpen;
  useEffect(()=>{const d=modalRef.current;if(modal&&!d?.open)d?.showModal();if(!modal&&d?.open)d.close()},[modal]);
  const close=()=>{if(!lock.current){select(null);showWallet(false);setJobNote('')}};
@@ -62,8 +45,6 @@ export default function Home(){
  const sources:Row[]=snapshot?.sources||[],active=sources.filter(s=>s.ok&&now-s.time<45000);
  const qualified=(snapshot?.rows||[]).filter((r:Row)=>r.expires>now);
  const rows=qualified.filter((r:Row)=>(pair==='전체'||r.kind===pair)&&(!own||address&&r.buyKind==='DEX'&&r.sellKind==='DEX'&&balances[r.from]?.usdc>=r.budget&&balances[r.from]?.eth>=(r.buyGas+r.bridgeGas+(r.approvalGas||0)+.02)/(r.gasPriceFrom||1)&&balances[r.to]?.eth>=(r.sellGas+(r.approvalGas||0)+.02)/(r.gasPriceTo||1)));
- const spot=snapshot?.ethReference;
- const last=spot?(spot.ask+spot.bid)/2:candles.at(-1)?.price,first=candles.at(0)?.price,change=last&&first?(last/first-1)*100:null;
  const filter=async(e:React.FormEvent)=>{e.preventDefault();const cfg={amount:Number(amount),min:Number(min)};apply(cfg);setSettingsNote('');
  try{const r=await fetch('/api/scan?mode=settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});if(!r.ok)throw Error();setSettingsNote('모니터링 금액을 저장했어요.')}catch{setSettingsNote('현재 화면에 적용했습니다. 서버 저장을 확인해주세요.')}};
  useEffect(()=>{let mounted=true;fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then((v:any)=>{if(mounted&&v?.amount&&Number.isFinite(v.min)&&(v.amount!==1000||v.min!==5)){apply(v);setAmount(String(v.amount));setMin(String(v.min))}}).catch(()=>{});return()=>{mounted=false}},[]);
@@ -100,8 +81,14 @@ export default function Home(){
  }
  return <><header className="mast"><div className="mastInner"><a href="/" className="brand"><i className="mark"><b/><b/><b/></i>Gapdesk</a><nav aria-label="주 메뉴">{['전체 토큰','먹을 수 있는 갭'].map((n,i)=><button key={n} aria-pressed={view===n} className={view===n?'navOn':''} onClick={()=>setView(n)}>{i?<Layers size={16}/>:<Activity size={17}/>} {n}</button>)}</nav><button className="wallet" onClick={()=>{setNote('');showWallet(true)}}><Wallet size={16}/>{address?address.slice(0,6)+'…'+address.slice(-4):'지갑 연결'}</button></div></header>
  <main><div className="titleLine"><div><div className="overline"><span className="liveDot"/> CEX · DEX 현물</div><h1>{view}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}자동 스캔 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
- <section className="overview"><div className="chartBox"><div className="chartData"><div className="chartHeader"><span className="asset"><span className="eth">Ξ</span>ETH 기준 시세 <small>ETH / USDC</small></span><span className="period">1H × 24</span></div><div className="price">{last?format(last):'—'} <small>USDC</small></div><div className="change">{change!==null?<><b className={change>=0?'up':'down'}>{change>=0?'+':''}{format(change)}%</b> 첫 시간봉 대비</>:'가격 수신 대기'}</div><Plot data={candles}/><div className="axis"><span>{candles.length?'24개 시간봉 · KuCoin':'차트 수신 대기'}</span><span>{spot?'현재 호가 중간값':'최근 시간봉 종가'}</span></div></div><div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div></div>
- <div className="metrics"><div><span><Radio size={16}/>감시 중인 토큰 심볼</span><strong>{snapshot?.tokens?.length.toLocaleString()??'—'}<small> 개</small></strong></div><div><span><Network size={16}/>비교한 경로</span><strong>{snapshot?.checked??'—'}<small> 개</small></strong></div><div><span><ShieldCheck size={16}/>조건 충족 갭</span><strong className="qual">{qualified.length}<small> 건</small></strong></div></div></section>
+ <section className="scanSummary" aria-label="스캔 현황">
+   <dl>
+     <div><dt><Radio size={16}/>감시 중인 토큰 심볼</dt><dd>{snapshot?.tokens?.length.toLocaleString()??'—'}<small>개</small></dd></div>
+     <div><dt><Network size={16}/>비교한 경로</dt><dd>{snapshot?.checked?.toLocaleString()??'—'}<small>개</small></dd></div>
+     <div><dt><ShieldCheck size={16}/>조건 충족 갭</dt><dd className="qual">{snapshot?qualified.length.toLocaleString():'—'}<small>건</small></dd></div>
+   </dl>
+   <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>
+ </section>
  {<div className="workspace"><section className="board">{view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{pairs.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
  <div className="tableHead"><span>매수 · 매도 마켓</span><span>이동 경로</span><span>예상 순차익</span></div>
  {rows.map((r:Row)=><button className="routeRow" key={r.id} onClick={()=>{select(r);setJobNote('')}}><span><strong>{r.symbol} · {r.buy} › {r.sell}</strong><small>{r.kind} · {r.symbol}</small></span><span>{r.bridge||'직접 전송'}<small>{chainName(r.from)} · {chainName(r.to)}</small></span><span className="gain">+{format(r.profit)}<small>USDC</small></span></button>)}
