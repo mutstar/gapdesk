@@ -3,12 +3,36 @@ import {gapReasonView,reasonLabel,spotReasonGroups,walletGapReason} from '../lib
 import {isFreshQualified} from '../lib/quote-freshness.mjs';
 import {venueFamily} from '../lib/venue-family.mjs';
 import {marketTime} from './market-arrivals';
+import {OBSERVATION_HOLD_MS,sameSettings} from '../lib/observation-window.mjs';
 
 type Row=Record<string,any>;
 export type Diagnosis={code:string,detail:string};
 type SummaryProps={observations:Row|null,snapshot:Row|null,waiting:boolean,now:number,budget:number,family:string,own:boolean,
   address:string,balances?:Row,verified:Row[],busy:boolean,error:string};
 const amount=(v:number)=>v.toLocaleString('ko-KR',{maximumFractionDigits:2});
+
+export function DexEmptySummary({observations,snapshot,budget,floor,maxImpact,now}:{observations:Row|null,snapshot:Row|null,budget:number,floor:number,maxImpact:number,now:number}){
+  const config={budget,floor,maxImpact};
+  const frame=[observations?.frame,observations?.previous,snapshot&&{...snapshot,complete:true}]
+    .filter(f=>f?.complete&&sameSettings(f,config)&&f.at<=now+5000&&now-f.at<OBSERVATION_HOLD_MS)
+    .sort((a,b)=>b.at-a.at)[0];
+  if(!frame)return <p className="signalEmpty" role="status">{amount(budget)} USDC 기준 DEX–DEX 스캔을 기다리고 있어요.</p>;
+  const reasons=new Map<string,number>(),paths=new Map<string,string>();
+  for(const r of frame.diagnosticGaps||[]){
+    if(r.buy?.kind==='DEX'&&r.sell?.kind==='DEX'&&r.gap>0&&r.id)paths.set(r.id,r.diagnosis?.code||'unverified');
+  }
+  for(const r of frame.routeChecks||[]){
+    if(r.buy?.kind!=='DEX'||r.sell?.kind!=='DEX'||r.cycle!==frame.startedAt||!r.id)continue;
+    if(r.status==='passed')paths.delete(r.id);
+    else paths.set(r.id,r.diagnosis?.code||'unverified');
+  }
+  for(const code of paths.values())reasons.set(code,(reasons.get(code)||0)+1);
+  return <section className="gapReasonSummary" aria-label="DEX–DEX 최근 스캔">
+    <strong>{amount(budget)} USDC 기준 · 목표 순차익 {amount(floor)} USDC</strong>
+    <p>{marketTime(frame.at)} KST 완료 · {paths.size?'검증을 통과하지 못했거나 견적이 없는 경로 '+paths.size.toLocaleString()+'건':'이번 회차에 기록된 제외 경로가 없어요.'}</p>
+    {reasons.size>0&&<details><summary>주요 원인</summary><ul>{[...reasons].sort((a,b)=>b[1]-a[1]).map(([code,count])=><li key={code}><div><strong>{reasonLabel(code)}</strong><b>{count.toLocaleString()}건</b></div></li>)}</ul></details>}
+  </section>;
+}
 
 export function RouteReason({budget,diagnosis,lastCheck}:{budget:number,diagnosis:Diagnosis,lastCheck?:Row|null}){
   const neutral=['pending','unverified','refresh','expired','depth_unverified','transfer_unverified','perp','stale_network'].includes(diagnosis.code);

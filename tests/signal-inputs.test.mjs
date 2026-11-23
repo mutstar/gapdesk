@@ -19,3 +19,12 @@ test('blocked observation records exact venue sides, preserves lack of evidence,
  assert.ok(!signalInputs(ms,marks,ids,[],1000,5).gaps.some(r=>r.id===entry.id));
  assert.equal(samples.find(r=>r.venue==='bithumb').asset,null);assert.equal(marketIds.length,3);
 });
+
+test('DEX pool observations at the configured gross floor are archived only as unverified',()=>{
+ const at=Date.now(),base={symbol:'ACE',kind:'DEX',dexId:'uniswap',name:'Uniswap V4',chain:56,token:'0x'+'1'.repeat(40),time:at};
+ const left={...base,id:'dex:left',pool:'0x'+'a'.repeat(64),ask:1,bid:1};
+ const right={...base,id:'dex:right',pool:'0x'+'b'.repeat(64),ask:1.001,bid:1.001};
+ const read=(floor)=>signalInputs([left,right],new Map(),new Map(),[],1000,floor).gaps;
+ assert.equal(read(1).length,1);assert.match(read(1)[0].reason,/미검증/);
+ assert.equal(read(1.01).length,0);
+});

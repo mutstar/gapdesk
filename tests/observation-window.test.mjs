@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {combineObservationBooks,currentQualifiedRows,displayedObservations,mergeFrame,observationCache,restoreObservationCache} from '../lib/observation-window.mjs';
+import {combineObservationBooks,currentQualifiedRows,displayedObservations,includeVerifiedDexRoutes,mergeFrame,observationCache,restoreObservationCache} from '../lib/observation-window.mjs';
 const now=2_000_000,token='0x'+'1'.repeat(40);
 function row(id,time,kind='CEX'){
   return {id,time,symbol:'ACE',gap:8,match:{chain:1,token},kind:'spot_spot',buy:{kind},sell:{kind:'CEX'}};
@@ -107,4 +107,14 @@ test('a sparse next frame or source fallback cannot restore executable status af
   assert.equal(currentQualifiedRows({...updated,rows:[{...updated.rows[0],verifiedAt:now+5}]},later,now+6).length,1);
   const slow=mergeFrame(null,{...frame(now,true,[]),routeChecks:[{...checked,checkedAt:now+8000}]});
   assert.deepEqual(currentQualifiedRows(updated,slow,now+8001),[]);
+});
+
+test('fresh exact DEX verification survives absence of a preliminary screen row',()=>{
+  const match={chain:1,token},leg={kind:'DEX',name:'Uniswap V4'};
+  const check={id:'route',match,buy:leg,sell:leg,kind:'spot_spot',status:'passed',checkedAt:now-50,gap:.2,ask:1,bid:1.002};
+  const exact={id:'route',match,buyKind:'DEX',sellKind:'DEX',budget:1000,profit:1.2,buyQuoteAt:now-200,sellQuoteAt:now-100,expires:now+30000,verifiedAt:check.checkedAt};
+  assert.equal(includeVerifiedDexRoutes([],[exact],[check],now,1000)[0].time,now-200);
+  for(const c of [{...check,status:'unconfirmed'},{...check,checkedAt:now-1000},{...check,match:{...match,chain:56}}])
+    assert.equal(includeVerifiedDexRoutes([],[exact],[c],now,1000).length,0);
+  assert.equal(includeVerifiedDexRoutes([],[exact],[check],now+45001,1000).length,0);
 });
