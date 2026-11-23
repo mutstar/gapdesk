@@ -1,8 +1,10 @@
+import {strictContractKey} from './contract-identity.mjs';
 type Row=Record<string,any>;
 const DAY=86400000;
 const MAX_GAP_MS=45000;
 const clock='COALESCE((SELECT cycle FROM signal_stream WHERE id=1),0)';
-const gapFields=`id, route_id AS routeId, symbol, buy, sell, opened_at AS openedAt, last_seen AS lastSeen,
+const gapFields=`id, route_id AS routeId, symbol, buy, sell, contract_key AS contractKey,
+  substr(contract_key,1,instr(contract_key,':')-1) AS chain, substr(contract_key,instr(contract_key,':')+1) AS token, opened_at AS openedAt, last_seen AS lastSeen,
   closed_at AS closedAt, state, entry_gap AS entryGap, latest_gap AS latestGap, entry_ask AS entryAsk,
   entry_bid AS entryBid, latest_ask AS latestAsk, latest_bid AS latestBid, budget, floor,
   max_impact AS maxImpact, status, reason, profit, checked_at AS checkedAt`;
@@ -29,7 +31,11 @@ export async function logSignals(scan:Row,connection?:D1Database){
   const db=connection??await storage(), cycle=scan.startedAt, seen=scan.at;
   if(!integer(cycle)||!integer(seen)||!positive(scan.budget)||!finite(scan.floor)||!positive(scan.maxImpact))
     throw Error('감지 시각 또는 설정 오류');
-  const gaps:Row[]=scan.signalGaps, checks:Row[]=scan.entryChecks??[], spikes:Row[]=scan.spikes??[];
+  const gaps:Row[]=scan.signalGaps.flatMap((gap:Row)=>{
+    const key=strictContractKey(gap?.match);
+    return key?[{...gap,contractKey:key}]:[];
+  });
+  const checks:Row[]=scan.entryChecks??[], spikes:Row[]=scan.spikes??[];
   for(const r of gaps){
     if(!str(r.id,1000)||!r.id.includes('|')||!str(r.symbol,150)||!str(r.buy,300)||!str(r.sell,300)||
        !positive(r.gap)||!positive(r.ask)||!positive(r.bid)||r.blocked!=null&&!str(r.blocked,500))
@@ -44,19 +50,19 @@ export async function logSignals(scan:Row,connection?:D1Database){
     seen,cycle,seen,MAX_GAP_MS+15000,scan.budget,scan.floor,scan.maxImpact,cycle,MAX_GAP_MS);
   for(const chunk of chunks(gaps,120)){
     // A closure or reopening starts a new observation even if both book prices persist.
-    sql(`WITH incoming AS (SELECT value->>'$.id' AS route,
+    sql(`WITH incoming AS (SELECT value->>'$.id' AS route,value->>'$.contractKey' AS ca,
        COALESCE(value->>'$.blocked',value->>'$.reason') AS reason FROM json_each(?))
        UPDATE gap_episodes SET closed_at=?,state='closed'
-       WHERE closed_at IS NULL AND ?>${clock} AND route_id IN (SELECT route FROM incoming)
-       AND reason IS NOT (SELECT reason FROM incoming WHERE route=route_id)`,
+       WHERE closed_at IS NULL AND ?>${clock} AND (route_id,contract_key) IN (SELECT route,ca FROM incoming)
+       AND reason IS NOT (SELECT reason FROM incoming WHERE route=route_id AND ca=contract_key)`,
        JSON.stringify(chunk),seen,cycle);
     sql(`INSERT INTO gap_episodes
-       (id,route_id,entry_cycle,symbol,buy,sell,opened_at,last_seen,state,entry_gap,latest_gap,entry_ask,entry_bid,latest_ask,latest_bid,budget,floor,max_impact,status,reason)
-       SELECT json_array(?,v->>'$.id'),v->>'$.id',?,v->>'$.symbol',v->>'$.buy',v->>'$.sell',?,?,'active',
+       (id,route_id,contract_key,entry_cycle,symbol,buy,sell,opened_at,last_seen,state,entry_gap,latest_gap,entry_ask,entry_bid,latest_ask,latest_bid,budget,floor,max_impact,status,reason)
+       SELECT json_array(?,v->>'$.id',v->>'$.contractKey'),v->>'$.id',v->>'$.contractKey',?,v->>'$.symbol',v->>'$.buy',v->>'$.sell',?,?,'active',
        v->>'$.gap',v->>'$.gap',v->>'$.ask',v->>'$.bid',v->>'$.ask',v->>'$.bid',?,?,?,
        CASE WHEN v->>'$.basis' IN ('perp_spot','perp_perp') THEN v->>'$.basis' WHEN v->>'$.blocked' IS NULL THEN 'unchecked' ELSE 'blocked' END,COALESCE(v->>'$.blocked',v->>'$.reason')
        FROM (SELECT value AS v FROM json_each(?)) WHERE ?>${clock}
-       ON CONFLICT(route_id) WHERE closed_at IS NULL DO UPDATE SET
+       ON CONFLICT(route_id,contract_key) WHERE closed_at IS NULL DO UPDATE SET
        latest_gap=excluded.latest_gap,latest_ask=excluded.latest_ask,latest_bid=excluded.latest_bid,last_seen=excluded.last_seen`,
        cycle,cycle,seen,seen,scan.budget,scan.floor,scan.maxImpact,JSON.stringify(chunk),cycle);
   }
@@ -67,12 +73,13 @@ export async function logSignals(scan:Row,connection?:D1Database){
       THEN 'closed' ELSE 'interrupted' END
     WHERE closed_at IS NULL AND last_seen<? AND ?>${clock}`,JSON.stringify(scan.signalMarketIds??[]),seen,seen,cycle);
   for(const r of checks){
-    if(!str(r.id,1000)||!integer(r.cycle)||!integer(r.checkedAt)||!['passed','unconfirmed','below_floor'].includes(r.status))continue;
+    const key=strictContractKey(r.match);
+    if(!key||!str(r.id,1000)||!integer(r.cycle)||!integer(r.checkedAt)||!['passed','unconfirmed','below_floor'].includes(r.status))continue;
     if(r.status==='passed'&&(!finite(r.profit)||r.profit<=0))continue;
     sql(`UPDATE gap_episodes SET status=?,profit=?,checked_at=?
-      WHERE id=json_array(?,?) AND status='unchecked'
+      WHERE id=json_array(?,?,?) AND status='unchecked'
       AND ?>=opened_at AND ?<=opened_at+? AND (?<>'passed' OR ?>=floor)`,
-      r.status,r.status==='passed'?r.profit:null,r.checkedAt,r.cycle,r.id,r.checkedAt,r.checkedAt,MAX_GAP_MS,r.status,r.profit??0);
+      r.status,r.status==='passed'?r.profit:null,r.checkedAt,r.cycle,r.id,key,r.checkedAt,r.checkedAt,MAX_GAP_MS,r.status,r.profit??0);
   }
   for(const chunk of chunks(spikes.filter(r=>str(r.id,1600)&&str(r.symbol,150)&&str(r.venue,300)&&str(r.marketId,800)&&
     ['up','down'].includes(r.side)&&integer(r.at)&&integer(r.baselineAt)&&r.at>=seen-8*DAY&&r.at<=seen+5000&&r.baselineAt<r.at&&
@@ -103,6 +110,7 @@ export async function signalHistory(params:URLSearchParams,connection?:D1Databas
   const cursor=params.get('cursor');
   const screened=gaps&&params.get('screened')==='1';
   const filterKey=JSON.stringify([kind,hours,symbol,venue,...(market==='all'?[]:[market]),...(screened?['screened']:[])]);
+  if(gaps)clauses.push('contract_key IS NOT NULL');
   if(screened)clauses.push("(status IN ('passed','perp_spot','perp_perp') OR reason='동일 네트워크 이동 경로 확인')");
   let anchor=now;
   if(cursor){

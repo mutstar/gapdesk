@@ -1,6 +1,6 @@
 import {sqliteTable,text,integer,real} from 'drizzle-orm/sqlite-core';
 export const scanState=sqliteTable('scan_state',{id:text('id').primaryKey(),value:text('value').notNull()});
-export const detections=sqliteTable('detections',{id:text('id').primaryKey(),symbol:text('symbol').notNull(),buy:text('buy').notNull(),sell:text('sell').notNull(),gap:real('gap').notNull(),seen:integer('seen').notNull(),kind:text('kind').notNull()});
+export const detections=sqliteTable('detections',{id:text('id').primaryKey(),symbol:text('symbol').notNull(),buy:text('buy').notNull(),sell:text('sell').notNull(),gap:real('gap').notNull(),seen:integer('seen').notNull(),kind:text('kind').notNull(),contractKey:text('contract_key')});
 
 import {index,uniqueIndex} from 'drizzle-orm/sqlite-core';
 import {sql} from 'drizzle-orm';
@@ -14,6 +14,7 @@ export const signalStream=sqliteTable('signal_stream',{
 export const gapEpisodes=sqliteTable('gap_episodes',{
   id:text('id').primaryKey(),
   routeId:text('route_id').notNull(),
+  contractKey:text('contract_key'),
   entryCycle:integer('entry_cycle').notNull(),
   symbol:text('symbol').notNull(),
   buy:text('buy').notNull(),
@@ -36,7 +37,7 @@ export const gapEpisodes=sqliteTable('gap_episodes',{
   profit:real('profit'),
   checkedAt:integer('checked_at'),
 },t=>[
-  uniqueIndex('gap_open_route').on(t.routeId).where(sql`${t.closedAt} IS NULL`),
+  uniqueIndex('gap_open_contract_route').on(t.routeId,t.contractKey).where(sql`${t.closedAt} IS NULL`),
   index('gap_recent').on(t.openedAt,t.id),
   index('gap_symbol_recent').on(t.symbol,t.openedAt,t.id),
   index('gap_expiry').on(t.lastSeen),

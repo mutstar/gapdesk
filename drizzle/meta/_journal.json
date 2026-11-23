@@ -15,6 +15,13 @@
       "when": 1795411966614,
       "tag": "0001_naive_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795414397292,
+      "tag": "0002_contract_evidence",
+      "breakpoints": true
     }
   ]
 }

@@ -20,6 +20,7 @@ const normalize = (spec = {}, quote = {}) => kucoinPerpMarkets([{ ...contract, .
 test('KuCoin converts contract counts and order limits into base units while preserving book prices', () => {
   const [m] = normalize();
   assert.equal(m.symbol, 'BTC');
+  assert.deepEqual(m.spotAnchorIds, []);
   assert.equal(m.kind, 'PERP');
   assert.equal(m.time, now - 100);
   assert.deepEqual([m.ask, m.bid, m.askSize, m.bidSize], [60002, 60001, 0.01, 0.25]);

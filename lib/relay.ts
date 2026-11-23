@@ -15,7 +15,7 @@ export async function latestRelay(budget:number,floor:number,only='',maxImpact?:
  if(age< -5000||age>(only?12000:45000))return null;
  const object=await env.BUCKET.get(file);if(!object)return null;
  const data=await new Response(object.body.pipeThrough(new DecompressionStream('gzip'))).json() as Snapshot;
- if(data.transferScreened!==true||!data.depthCoverage||maxImpact!==undefined&&data.maxImpact!==maxImpact||data.budget!==budget||data.floor!==floor||Date.now()-data.at>(only?12000:45000))return null;
+ if(data.contractScreened!==true||data.transferScreened!==true||!data.depthCoverage||maxImpact!==undefined&&data.maxImpact!==maxImpact||data.budget!==budget||data.floor!==floor||Date.now()-data.at>(only?12000:45000))return null;
  data.rows=data.rows.filter((r:Snapshot)=>r.expires>Date.now()&&(!only||r.id===only));
  if(only&&!data.rows.length)return null;
  if(only)data.tokens=[];
@@ -26,7 +26,7 @@ export async function acceptRelay(req:Request){
  const bytes=await req.arrayBuffer();if(bytes.byteLength>4000000)return new Response('크기 한도',{status:413});
  const data=await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).json() as Snapshot;
  const {at,budget,floor,rows,tokens,sources}=data;
- if(data.transferScreened!==true||!data.depthCoverage||!validImpact(data.maxImpact)||!Number.isFinite(at)||Date.now()-at>45000||at>Date.now()+5000||!(budget>=10&&budget<=100000)||!(floor>=0&&floor<=100000)||!Array.isArray(rows)||!Array.isArray(tokens)||!Array.isArray(sources)||!tokens.length||tokens.length>100000)return new Response('유효한 시세 없음',{status:400});
+ if(data.contractScreened!==true||data.transferScreened!==true||!data.depthCoverage||!validImpact(data.maxImpact)||!Number.isFinite(at)||Date.now()-at>45000||at>Date.now()+5000||!(budget>=10&&budget<=100000)||!(floor>=0&&floor<=100000)||!Array.isArray(rows)||!Array.isArray(tokens)||!Array.isArray(sources)||!tokens.length||tokens.length>100000)return new Response('유효한 시세 없음',{status:400});
  if(!sources.some(s=>s.ok&&s.count>0))return new Response('시세 미수신',{status:400});
  const revision=String(Date.now());
  await logScan(data);

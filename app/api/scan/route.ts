@@ -9,8 +9,7 @@ export async function GET(req:Request){
  if(!valid(budget,floor)||!validImpact(maxImpact)||address&&!/^0x[0-9a-f]{40}$/i.test(address)||only.length>500)return new Response('입력값 오류',{status:400});
  // Jobs saved by the single-pair version retain their original, ETH-only route IDs.
  if(/^(bitget|kucoin|base|arb)-(bitget|kucoin|base|arb)$/.test(only)){
- if(only.split('-').some(v=>v==='base'||v==='arb'))return Response.json({rows:[],tokens:[]},{headers:{'Cache-Control':'no-store'}});
- const {scan}=await import('../../../lib/market.mjs');return Response.json(await scan(budget,floor,address,only),{headers:{'Cache-Control':'no-store'}});
+ return Response.json({rows:[],tokens:[]},{headers:{'Cache-Control':'no-store'}});
  }
  const cursor=p.get('cursor')||'',poolCursor=Number(p.get('pool')||0);
  if(cursor.length>500||!Number.isSafeInteger(poolCursor)||poolCursor<0)return new Response('커서 오류',{status:400});

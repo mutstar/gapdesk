@@ -30,28 +30,29 @@ test('exact budget and required sides are rechecked with depth, fees, and both F
  assert.equal(await run(5,{book:async m=>({...book(m.ask),fx:book(m===sell?1.3:1)})}),null);
  assert.equal(await run(5,{nets:async m=>m===buy?[{...net(),fee:49}]:[net()]}),null);
 });
-test('cross-chain non-native asset uses exact token, decimals and route quote at each step',async()=>{
+test('strict spot qualification requires one chain and one issued CA even when a bridge quotes a conversion',async()=>{
  function deep(m){
   const stable=CHAINS[m.chain],now=Date.now(),reserve=1000000n;
   return {...m,time:now,block:99,blockTime:now,depth:{chain:m.chain,pool:m.pool,block:99,time:now,dexId:'uniswap',protocol:'v2',feePpm:3000,
    token0:m.token,token1:stable.usdc,decimals0:6,decimals1:stable.decimals,reserve0:String(reserve*1000000n),
    reserve1:String(reserve*BigInt(m.ask)*10n**BigInt(stable.decimals))}};
  }
- const b=deep(dex('one',10)),s=deep(dex('two',14,56,other)),seen=[];
+ const b=deep(dex('one',10)),s=deep(dex('two',14)),seen=[];
  const io={gas:async()=>0,quote:async(a,z,src,dst,input)=>{
-   seen.push({a,z,src,dst,input});const bridge=a!==z,buy=src===CHAINS[a].usdc;
-   return {fromChain:a,toChain:z,fromToken:src,toToken:dst,inputUnits:input,at:Date.now(),fromDecimals:6,toDecimals:bridge||buy?6:18,
-     minimum:bridge?'99000000':buy?'100000000':'1380000000000000000000',tool:'dex',gas:0,duration:10}}};
- const result=await qualify({buy:b,sell:s},1000,5,wallet,{8453:1700,56:550},io);
- assert.equal(result.profit,380);assert.equal(result.depthChecks.length,2);
- assert.deepEqual(seen.map(x=>x.src),[CHAINS[8453].usdc,token,other]);
- const poorMinimum={...io,quote:async(...args)=>{const q=await io.quote(...args);return q.toToken===CHAINS[56].usdc?{...q,minimum:'1300000000000000000000'}:q}};
+   seen.push({a,z,src,dst,input});const buy=src===CHAINS[a].usdc;
+   return {fromChain:a,toChain:z,fromToken:src,toToken:dst,inputUnits:input,at:Date.now(),fromDecimals:6,toDecimals:6,
+     minimum:buy?'100000000':'1390000000',tool:'dex',gas:0,duration:10}}};
+ for(const t of [deep(dex('otherCA',14,8453,other)),deep(dex('otherChain',14,56,token))]){
+   assert.equal(await qualify({buy:b,sell:t},1000,5,wallet,{},io),null);
+ }
+ assert.equal(seen.length,0);
+ const result=await qualify({buy:b,sell:s},1000,5,wallet,{},io);
+ assert.equal(result.profit,390);assert.deepEqual(result.match,{chain:8453,token});
+ assert.deepEqual(seen.map(x=>x.src),[CHAINS[8453].usdc,token]);
+ const poorMinimum={...io,quote:async(...args)=>{const q=await io.quote(...args);return q.toToken===CHAINS[8453].usdc?{...q,minimum:'1300000000'}:q}};
  assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},poorMinimum),null);
  assert.equal(await qualify({buy:b,sell:{...s,depth:undefined}},1000,5,wallet,{},io),null);
- assert.deepEqual(steps(result).map(x=>x.output),[token,other,CHAINS[56].usdc]);
- assert.equal(steps(result)[2].amount,'99000000');
- const unavailable={...io,quote:async(a,z)=>{if(a!==z)throw Error('no bridge');return {fromDecimals:6,toDecimals:6,minimum:'100000000',tool:'dex',gas:0,duration:0}}};
- assert.equal(await qualify({buy:b,sell:s},1000,5,wallet,{},unavailable),null);
+ assert.deepEqual(steps(result).map(x=>x.output),[token,CHAINS[8453].usdc]);
 });
 
 test('RAIN namesakes on the same chain never form a spread even with deposits open',()=>{
@@ -71,4 +72,22 @@ test('selects the next valid pair when an extreme venue cannot receive or send o
  assert.equal(discover([buy,{...safe,networks:[{...net(),deposit:null}]}],1000,1).summaries[0].gap,null);
  assert.equal(discover([buy,{...safe,networkTime:Date.now()-46000}],1000,1).summaries[0].gap,null);
  assert.equal(discover([buy,{...safe,networks:[{...net(),minIn:2000}]}],1000,1).summaries[0].gap,null);
+});
+
+test('different ticker aliases meet only at a shared chain and contract; no CA or native placeholder never pairs',()=>{
+ const x={...cex('X',1,[net()]),symbol:'XYZ'},y={...cex('Y',1.3,[net()]),symbol:'OTHER'};
+ const scan=discover([x,y],1000,1);
+ assert.equal(scan.summaries.length,1);assert.deepEqual(scan.summaries[0].aliases,['OTHER','XYZ']);
+ assert.deepEqual(scan.summaries[0].match,{chain:8453,token});assert.ok(scan.candidates.length);
+ for(const n of [[],[net(8453,NATIVE)],[net(8453,'bogus')]]){
+   const r=discover([{...x,networks:n},{...y,networks:n}],1000,1,1,true);
+   assert.equal(r.candidates.length,0);assert.equal(r.signalData.gaps.length,0);
+ }
+});
+
+test('two chain-specific deposit addresses remain separate qualification candidates for the same venue pair',()=>{
+ const chains=[net(),net(1,other)];
+ const scan=discover([cex('X',1,chains),cex('Y',1.1,chains)],1000,1,1,true);
+ assert.equal(scan.candidates.length,2);assert.equal(new Set(scan.candidates.map(c=>c.id)).size,2);
+ assert.deepEqual(scan.signalData.gaps.map(c=>c.id).sort(),scan.candidates.map(c=>c.id).sort());
 });

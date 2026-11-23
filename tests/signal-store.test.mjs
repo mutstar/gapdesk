@@ -2,18 +2,22 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
+import {logScan,history as observations} from '../lib/scan-store.ts';
 import {logSignals,signalHistory,InvalidSignalQuery} from '../lib/signal-store.ts';
 
 const start=1700000000000,marketIds=['bitget:ACE','kucoin:ACE'];
-const gap={id:marketIds.join('|'),symbol:'ACE',buy:'Bitget',sell:'KuCoin',ask:1,bid:1.1,gap:10,blocked:null};
+const match={chain:42161,token:'0x'+'12'.repeat(20)};
+const contractKey=match.chain+':'+match.token;
+const gap={match,id:marketIds.join('|'),symbol:'ACE',buy:'Bitget',sell:'KuCoin',ask:1,bid:1.1,gap:10,blocked:null};
 const frame=(i,changes={})=>({startedAt:start+i*30000,at:start+i*30000+5000,
   budget:1000,floor:5,maxImpact:1,signalGaps:[gap],signalMarketIds:marketIds,...changes});
 function setup(t){
   const sqlite=new DatabaseSync(':memory:');t.after(()=>sqlite.close());
   sqlite.exec(readFileSync(new URL('../drizzle/0000_serious_lorna_dane.sql',import.meta.url),'utf8'));
   sqlite.exec(readFileSync(new URL('../drizzle/0001_naive_magik.sql',import.meta.url),'utf8'));
+  sqlite.exec(readFileSync(new URL('../drizzle/0002_contract_evidence.sql',import.meta.url),'utf8'));
   const db={
-    prepare(sql){return {sql,args:[],bind(...args){return {sql,args}}}},
+    prepare(sql){return {sql,args:[],bind(...args){return {sql,args,async all(){return {results:sqlite.prepare(sql).all(...args)}}}}}},
     async batch(jobs){
       sqlite.exec('BEGIN');
       try{
@@ -22,18 +26,18 @@ function setup(t){
       }catch(e){sqlite.exec('ROLLBACK');throw e}
     }
   };
-  return {log:data=>logSignals(data,db),history:(params={},now=start+300000)=>signalHistory(new URLSearchParams(params),db,now)};
+  return {sqlite,db,log:data=>logSignals(data,db),history:(params={},now=start+300000)=>signalHistory(new URLSearchParams(params),db,now)};
 }
 test('gap first/last marks, exact verification cycle and duplicate/out-of-order revisions',async t=>{
   const {log,history}=setup(t);
   const first=frame(0),second=frame(1,{signalGaps:[{...gap,gap:17,bid:1.17}]});
   await log(first);await log(second);
-  await log(frame(1,{entryChecks:[{id:gap.id,cycle:second.startedAt,status:'passed',checkedAt:second.at+1000,profit:10}]}));
+  await log(frame(1,{entryChecks:[{match,id:gap.id,cycle:second.startedAt,status:'passed',checkedAt:second.at+1000,profit:10}]}));
   let [row]=(await history({},second.at+2000)).items;
   assert.equal(row.status,'unchecked');assert.equal(row.latestGap,17);
-  await log(frame(0,{entryChecks:[{id:gap.id,cycle:first.startedAt,status:'passed',checkedAt:first.at+46000,profit:7}]}));
+  await log(frame(0,{entryChecks:[{match,id:gap.id,cycle:first.startedAt,status:'passed',checkedAt:first.at+46000,profit:7}]}));
   assert.equal((await history({},second.at+2000)).items[0].status,'unchecked');
-  const enriched=frame(0,{entryChecks:[{id:gap.id,cycle:first.startedAt,status:'passed',checkedAt:first.at+42000,profit:7}]});
+  const enriched=frame(0,{entryChecks:[{match,id:gap.id,cycle:first.startedAt,status:'passed',checkedAt:first.at+42000,profit:7}]});
   await log(enriched);await log(enriched);
   assert.equal((await history({},first.at+50000)).historyStartedAt,first.at);
   const [verified]=(await history({},first.at+50000)).items;
@@ -74,7 +78,7 @@ test('venue spikes are idempotent, date paginated and filtered by symbol and ven
 test('futures records retain entry type and cannot be promoted by spot verification',async t=>{
   const {log,history}=setup(t);
   const row={...gap,id:'kucoin:perp:ACEUSDTM|bitget:ACE',basis:'perp_spot',reason:'현물 보유 또는 차입 필요'};
-  await log(frame(0,{signalGaps:[row,gap],entryChecks:[{id:row.id,cycle:start,checkedAt:start+6000,status:'passed',profit:90}]}));
+  await log(frame(0,{signalGaps:[row,gap],entryChecks:[{match,id:row.id,cycle:start,checkedAt:start+6000,status:'passed',profit:90}]}));
   const result=await history({market:'perp_spot'});
   assert.deepEqual(result.items.map(x=>[x.status,x.reason,x.profit]),[['perp_spot',row.reason,null]]);
   assert.equal((await history({market:'spot'})).items.length,1);
@@ -90,4 +94,43 @@ test('screened history stops a direct route on closure and raw mode preserves it
   assert.equal((await history({},frame(1).at)).items[0].status,'blocked');
   await log(frame(2,{signalGaps:[open]}));
   assert.equal((await history({screened:'1'},frame(2).at)).items[0].openedAt,frame(2).at);
+});
+
+test('both raw and screened gaps require recorded CA evidence; same venue route on different CAs has separate episodes',async t=>{
+  const {log,history,sqlite}=setup(t);
+  const a={...gap,reason:'동일 네트워크 이동 경로 확인'};
+  const other={chain:1,token:match.token},b={...a,match:other};
+  await log(frame(0,{signalGaps:[a]}));
+  // Simulate a row created by the prior schema: migration never infers a contract for it.
+  sqlite.prepare('UPDATE gap_episodes SET contract_key=NULL WHERE entry_cycle=?').run(start);
+  await log(frame(1,{signalGaps:[{...a,match:undefined},{...a,match:{chain:1,token:'ACE'}}]}));
+  assert.equal((await history({})).items.length,0);
+  assert.equal((await history({screened:'1'})).items.length,0);
+  assert.equal(sqlite.prepare('SELECT count(*) AS n FROM gap_episodes').get().n,1);
+  const both=frame(2,{signalGaps:[a,b]});
+  await log(both);await log(both);
+  await log({...both,entryChecks:[{id:gap.id,match:other,cycle:both.startedAt,checkedAt:both.at+100,status:'passed',profit:100}]});
+  await log(frame(3,{signalGaps:[a]}));
+  const rows=(await history({},frame(3).at)).items;
+  assert.equal(rows.length,2);
+  assert.deepEqual(rows.map(r=>[r.chain,r.token,r.state,r.status]).sort(),[
+    ['1',match.token,'closed','passed'],[String(match.chain),match.token,'active','unchecked']]);
+  assert.equal(rows.find(r=>r.chain===String(match.chain)).contractKey,contractKey);
+});
+test('hourly peaks are keyed by contract and omit unproven legacy and mismatched entries',async t=>{
+  const {db,sqlite}=setup(t),at=Date.now();
+  const different={chain:1,token:match.token};
+  sqlite.prepare('INSERT INTO detections(id,symbol,buy,sell,gap,seen,kind) VALUES(?,?,?,?,?,?,?)')
+    .run('old','ACE','A','B',9999,at,'견적 통과');
+  const observed={...gap,time:at};
+  const qualified={symbol:'ACE',buy:'A',sell:'B',bps:10,from:match.chain,fromToken:match.token,to:match.chain,toToken:match.token};
+  const scan={at,tokens:[observed,{...observed,match:different},{...observed,match:null,gap:4999}],
+    rows:[qualified,{...qualified,to:1,bps:1000},{...qualified,toToken:'',bps:5000}]};
+  await logScan(scan,db);await logScan(scan,db);
+  const rows=await observations('ace',false,db,at+2000);
+  assert.equal(rows.length,3);
+  assert.deepEqual(rows.map(r=>r.gap).sort(),[10,10,10]);
+  assert.deepEqual([...new Set(rows.map(r=>r.chain))].sort(),['1',String(match.chain)]);
+  assert.ok(rows.every(r=>r.token===match.token));
+  assert.equal((await observations('ace',true,db,at+2000)).length,3);
 });

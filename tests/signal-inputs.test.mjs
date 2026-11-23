@@ -8,10 +8,14 @@ test('blocked observation records exact venue sides, preserves lack of evidence,
  const marks=new Map(ms.map(m=>[m.id,{buy:m.ask,sell:m.bid}]));
  const ids=new Map([[a.id,'canonical'],[other.id,'another']]);
  const {gaps,samples,marketIds}=signalInputs(ms,marks,ids,[],1000,5);
- const entry=gaps.find(r=>r.id==='left|bithumb');
+ assert.equal(gaps.length,0);
+ const ca={chain:1,token:'0x'+'1'.repeat(40)};
+ a.networks=[ca];b.networks=[ca];b.symbol='ALIAS';other.networks=[{...ca,token:'0x'+'2'.repeat(40)}];
+ const entry=signalInputs(ms,marks,ids,[],1000,5).gaps.find(r=>r.id.startsWith('left|bithumb~ca='));
+ assert.deepEqual(entry.match,ca);
  assert.equal(entry.blocked,'매도처 입금 중단');assert.equal(entry.gap,100);
  assert.ok(!gaps.some(r=>r.id==='left|other'));
  b.depositOpen=null;
- assert.equal(signalInputs(ms,marks,ids,[],1000,5).gaps.find(r=>r.id===entry.id).blocked,null);
+ assert.ok(!signalInputs(ms,marks,ids,[],1000,5).gaps.some(r=>r.id===entry.id));
  assert.equal(samples.find(r=>r.venue==='bithumb').asset,null);assert.equal(marketIds.length,3);
 });

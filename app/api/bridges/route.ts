@@ -16,7 +16,7 @@ export async function POST(req:Request){
        !Number.isFinite(floor)||floor<0||floor>100000)return reply({reason:'조회 조건을 확인해 주세요.'},400);
     const relay=await latestRelay(budget,floor).catch(()=>null) as Record<string,any>|null;
     const snapshot=relay?.tokens?.some((t:any)=>Array.isArray(t.contracts))?relay:(await prepareScan({budget,floor,poolPass:undefined})).snapshot;
-    const contracts:Contract[]=snapshot.tokens.find((t:{symbol:string})=>t.symbol===symbol)?.contracts||[];
+    const contracts:Contract[]=snapshot.tokens.find((t:any)=>t.match?.chain===from&&t.match.token===fromToken.toLowerCase())?.contracts||[];
     const src=contracts.find(c=>c.chain===from&&c.token===fromToken.toLowerCase());
     if(!bridgeDestinations(src,contracts).some((c:Contract)=>c.chain===to&&c.token===toToken.toLowerCase()))
       return reply({status:'unknown',reason:'이 두 컨트랙트가 같은 자산인지 확인할 수 없어요.'});

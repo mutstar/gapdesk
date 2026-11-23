@@ -2,6 +2,7 @@
 import {useState,useEffect,useRef,useCallback} from 'react';
 import {Activity,Radio,Wallet,RefreshCw,SlidersHorizontal,Layers,Check,ArrowUpRight,Clock3,ScanLine,ChevronRight,X,Pause,Play,Network,ShieldCheck} from 'lucide-react';
 import {TradeLeg} from '../components/trade-leg';
+import {strictContractKey} from '../lib/contract-identity.mjs';
 import {ContractCopy} from '../components/contract-copy';
 import {FuturesBoard} from '../components/futures-board';
 import {SignalHistory} from '../components/signal-history';
@@ -73,7 +74,8 @@ export default function Home(){
  const current=selected&&jobState?.row?.id===selected.id?jobState:null;
  const routeSteps=selected?steps(current?.row||selected):[],index=current?.i||0,step=routeSteps[index];
  const start=useCallback(async(r:Row)=>{const data=await scan(r.budget,settings.min,settings.maxImpact,address,r.id);
- const v=data?.rows.find((x:Row)=>x.id===r.id&&x.from===r.from&&x.to===r.to);
+ const ca=strictContractKey(r.match);
+ const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
  if(!v)throw Error('현재 견적으로는 이 경로가 조건을 충족하지 않습니다.');
  return v},[address,settings.min,settings.maxImpact]);
  async function act(){
@@ -92,6 +94,9 @@ export default function Home(){
    if(status==='failed'){job({...current,pending:null});setJobNote('트랜잭션이 실패했습니다. 지갑에서 내역을 확인해주세요.');return}
    job({...current,i:current.i+(current.pending.type==='approval'?0:1),pending:null});return;
  }
+ const saved=current.row,ca=strictContractKey(saved.match);
+ if(!ca||strictContractKey({chain:saved.from,token:saved.fromToken})!==ca||strictContractKey({chain:saved.to,token:saved.toToken})!==ca)
+   throw Error('이전 경로의 CA를 확인할 수 없어요. 최신 견적으로 경로를 다시 선택해 주세요.');
  if(step?.manual){job({...current,i:current.i+1});return}
  if(!step)return;
  const recheck= index===0?async()=>{await start(current.row)}:undefined;
@@ -104,7 +109,7 @@ export default function Home(){
  <main><div className="titleLine"><div><div className="overline"><span className="liveDot"/> {isFutures?'USDT 무기한 선물':'CEX · DEX 현물'}</div><h1>{view}</h1></div><div className="liveControls"><button className={'auto '+(auto?'on':'')} onClick={()=>setAuto(!auto)}>{auto?<Pause size={14}/>:<Play size={14}/>}화면 갱신 {auto?'켜짐':'꺼짐'}</button><button aria-label="지금 새로고침" disabled={busy} className="refresh" onClick={()=>reset(tick+1)}><RefreshCw size={17} className={busy?'spin':''}/></button></div></div>
  <section className="scanSummary" aria-label="스캔 현황">
    <dl>
-     <div><dt><Radio size={16}/>{isFutures?'가격 수신 선물 계약':'감시 중인 토큰 심볼'}</dt><dd>{(isFutures?snapshot?.futures?.priced:snapshot?.tokens?.length)?.toLocaleString()??'—'}<small>개</small></dd></div>
+     <div><dt><Radio size={16}/>{isFutures?'가격 수신 선물 계약':'감시 항목 · 체인별 토큰'}</dt><dd>{(isFutures?snapshot?.futures?.priced:snapshot?.tokens?.length)?.toLocaleString()??'—'}<small>개</small></dd></div>
      <div><dt><Network size={16}/>{isFutures?'비교한 선물 조합':'비교한 경로'}</dt><dd>{(isFutures?snapshot?.futures?.compared:snapshot?.checked)?.toLocaleString()??'—'}<small>개</small></dd></div>
      <div><dt><ShieldCheck size={16}/>{isFutures?'기초자산 매칭 계약':'조건 충족 갭'}</dt><dd className="qual">{isFutures?snapshot?.futures?.matched?.toLocaleString()??'—':snapshot?qualified.length.toLocaleString():'—'}<small>{isFutures?'개':'건'}</small></dd></div>
    </dl>

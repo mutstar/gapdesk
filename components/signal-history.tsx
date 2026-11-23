@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {ContractCopy} from './contract-copy';
 import {TradeLeg} from './trade-leg';
 import {ArrowDownRight,ArrowUpRight,Clock3,Search} from 'lucide-react';
 
@@ -15,6 +16,7 @@ function GapRow({r}:{r:Row}){
   const active=r.state==='active';
   return <article className="signalCard">
     <div className="signalHead"><strong>{r.symbol}</strong><span className={'verdict '+r.status}>{verdict[r.status]||'미확인'}</span><time>{kst(r.openedAt)} KST 최초 감지</time></div>
+    <ContractCopy item={{chain:r.chain,token:r.token}}/>
     <div className="tradePair">
       <TradeLeg side="buy" venue={r.buy} perp={r.status.startsWith('perp_')&&r.buy.endsWith(' 선물')} price={r.entryAsk} caption="최초 감지 가격"/>
       <TradeLeg side="sell" venue={r.sell} perp={r.status.startsWith('perp_')&&r.sell.endsWith(' 선물')} price={r.entryBid} caption="최초 감지 가격"/>
@@ -43,7 +45,7 @@ function Earlier({symbol,before}:{symbol:string,before:number}){
     }).catch(()=>{if(!c.signal.aborted)setError(true)}).finally(()=>{if(!c.signal.aborted)setBusy(false)});return()=>c.abort();
   },[symbol,before]);
   return <details className="pastSignals"><summary>기존 24시간 기록 · {symbol}</summary><p>기존 수집기는 시간대별 최고 갭을 저장했어요. 최초 시각과 당시 설정 금액은 기록 전입니다.</p>
-    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · 사는 곳 {r.buy} · 파는 곳 {r.sell} · {display(r.gap)}% · {r.kind}</p>)}
+    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · 사는 곳 {r.buy} · 파는 곳 {r.sell} · {display(r.gap)}% · {r.kind} <ContractCopy item={{chain:r.chain,token:r.token}}/></p>)}
     {!rows.length&&<p>{busy?'조회 중…':error?'기존 기록을 불러오지 못했어요.':'이 심볼의 이전 기록이 없어요.'}</p>}</details>
 }
 export function SignalHistory({kind,revision}:Props){
@@ -63,7 +65,7 @@ export function SignalHistory({kind,revision}:Props){
       }catch{if(!c.signal.aborted)setError(true)}
     },200);return()=>{clearTimeout(t);c.abort()}
   },[kind,gaps,raw,market,key,place,hours,cursor,refresh,retry]);
-  return <><div className="panelHead"><div><h2>{gaps?'신규 갭 기록':'거래소별 급등락 기록'}</h2><p className="hint">{gaps?'최초 감지 시점의 금액·견적을 저장합니다. 견적 통과는 예상 체결 기준입니다.':'동일 마켓의 30초~1시간 구간에서 10% 이상 움직인 시점을 표시합니다.'}</p></div></div>
+  return <><div className="panelHead"><div><h2>{gaps?'신규 갭 기록':'거래소별 급등락 기록'}</h2><p className="hint">{gaps?'두 마켓에서 체인과 CA가 일치한 갭의 최초 감지 금액·견적을 표시합니다. 견적 통과는 예상 체결 기준입니다.':'동일 마켓의 30초~1시간 구간에서 10% 이상 움직인 시점을 표시합니다.'}</p></div></div>
     {gaps&&<div className="tabs" aria-label="신규 갭 유형">{[['all','전체'],['spot','현물'],['perp_spot','현물–선물'],['perp_perp','선물–선물']].map(([value,label])=><button key={value} aria-pressed={market===value} className={market===value?'selected':''} onClick={()=>{setMarket(value);first()}}>{label}</button>)}</div>}
     <div className="signalFilters"><label><Search size={14}/> 토큰<input type="search" placeholder="예: ACE" value={symbol} onChange={e=>{setSymbol(e.target.value);first()}}/></label>
     <label>기간<select value={hours} onChange={e=>{setHours(Number(e.target.value));first()}}>{[[1,'1시간'],[6,'6시간'],[24,'24시간'],[168,'7일']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>

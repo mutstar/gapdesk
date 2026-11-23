@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {loadBitgetPerps} from '../lib/bitget-perps.mjs';
+import {createBitgetAnchorLookup} from '../lib/perp-index-anchors.mjs';
 
 function fixtures() {
   const now = Date.now();
@@ -63,4 +64,36 @@ test('does not fabricate sizes, funding or OI when the funding schedule is stale
     api([c], [{...t, fundingRate: '', holdingAmount: null, askSz: ''}], [f], now - 60000))).markets;
   assert.deepEqual([fundingRate, nextFundingAt, openInterestUsdt, askSize], [null, null, null, null]);
   assert.equal((await loadBitgetPerps(api(null, [t], []))).source.ok, false);
+});
+
+test('index anchors require an explicitly named spot pair and a current matching contract response', async () => {
+  const make = symbol => ({symbol,contract:symbol+'USDT'});
+  const markets = ['IDE','EMPTY','STALE','WRONG'].map(make);
+  const positive = {weight:'0.1',equivalentPrice:'3.2'};
+  await createBitgetAnchorLookup()(markets, async url => {
+    const contract = new URL(url).searchParams.get('symbol');
+    const pair = contract.slice(0,-4) + '/USDT';
+    const componentList = contract==='EMPTYUSDT' ? [] : [
+      {exchange:'BITGET',spotPair:pair,...positive},{exchange:'KUCOIN',spotPair:pair,...positive},
+      {exchange:'BITGET_FUTURE',spotPair:pair,...positive},{exchange:'KUCOIN',spotPair:'UNRELATED/USDT',...positive}
+    ];
+    return Response.json({code:'00000', requestTime:Date.now()-(contract==='STALEUSDT'?60000:0),
+      data:{symbol:contract==='WRONGUSDT'?'OTHER':contract, componentList}});
+  });
+  assert.deepEqual(markets.map(m=>m.spotAnchorIds),[['bitget:IDEUSDT','kucoin:IDE-USDT'],[],[],[]]);
+});
+
+test('bounded index refresh visits remaining listings before polling previously queried contracts', async t => {
+  const lookup=createBitgetAnchorLookup(),markets=Array.from({length:10},(_,i)=>({symbol:'C'+i,contract:'C'+i+'USDT'}));
+  let now=Date.now();t.mock.method(Date,'now',()=>now);
+  const calls=[];
+  const api=async url=>{
+    const contract=new URL(url).searchParams.get('symbol');calls.push(contract);
+    return Response.json({code:'00000',requestTime:now,data:{symbol:contract,componentList:[
+      {exchange:'BITGET_FUTURE',spotPair:contract.slice(0,-4)+'/USDT',weight:'0.1',equivalentPrice:'4'}
+    ]}});
+  };
+  await lookup(markets,api);await lookup(markets,api);assert.equal(calls.length,8);
+  now+=30000;await lookup(markets,api);assert.equal(new Set(calls).size,10);assert.equal(calls.length,10);
+  assert.ok(markets.every(m=>m.spotAnchorIds.length===0));
 });
