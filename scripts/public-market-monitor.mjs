@@ -14,11 +14,25 @@ import {readWideFiles,wideMarkets} from '../lib/wide-markets.mjs';
 import {poolType,readPools} from '../lib/pool-reader.mjs';
 import {startFactoryRegistry} from '../lib/factory-registry.mjs';
 import {startRegistry} from '../lib/pool-registry.mjs';
+import {dexVenues,networks} from '../lib/dex-venues.mjs';
+import {mkdirSync} from 'node:fs';
+import {createSolanaWatcher} from '../lib/solana-swaps.mjs';
+import {openWatchRegistry} from '../lib/watch-registry.mjs';
+import {createEventWatcher} from '../lib/pool-event-stream.mjs';
+import {createKeyResolver} from '../lib/v4-pool-keys.mjs';
+import {eventPrices} from '../lib/event-prices.mjs';
 import {createVenueMonitor} from '../lib/venue-observations.mjs';
 
 const site = new URL('https://dokdo-gapdesk.awakeant23.chatgpt.site');
 const interval = 30_000;
-const venues=createVenueMonitor();
+mkdirSync(new URL('../.sites-runtime/',import.meta.url),{recursive:true});
+const watch=openWatchRegistry(fileURLToPath(new URL('../.sites-runtime/watch-pools.sqlite',import.meta.url)));
+const venues=createVenueMonitor({registry:watch});
+const eventWatcher=createEventWatcher(watch);
+const solanaWatcher=createSolanaWatcher(watch);
+const resolveKeys=createKeyResolver(watch);
+const chainSlug=new Map(Object.entries(networks).map(([slug,id])=>[id,slug]));
+const seeded=new Set();
 const readNewPools=createIndexedPoolReader({intervalMs:500});
 let service = '';
 for await (const part of process.stdin) service += part.toString();
@@ -82,6 +96,8 @@ async function sendBook(frame){
 }
 async function tick(slot) {
   void venues.refresh();
+  void solanaWatcher.refresh().catch(failed);
+  void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);
   const {amount:budget,min:floor,maxImpact=1} = await siteFetch('/api/settings');
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
   let seq=0, latest;
@@ -107,6 +123,17 @@ async function tick(slot) {
       known.set(k,listed ? {...listed,protocol:p.protocol} : p);
     }
     const entries = [...known.values()];
+    const discovered=[];
+    for(const p of entries){
+      const id=poolKey(p),chain=chainSlug.get(p.chain);
+      if(seeded.has(id)||!chain)continue;
+      const venue=dexVenues.find(v=>v.chains.includes(chain)&&v.ids.includes(p.dexId))?.id;
+      discovered.push({chain,pool:p.pool,venue,tokens:[p.base,p.quote]});
+    }
+    if(discovered.length){
+      watch.commit(discovered);
+      for(const p of discovered)seeded.add(networks[p.chain]+':'+p.pool);
+    }
     const registry = {...index.coverage,registeredPools:entries.length,factories:factories.coverage};
     const remaining = slot + interval - Date.now() - 2300;
     const options = {onMarkets,timeoutMs:Math.max(1,Math.min(24000,remaining))};
@@ -123,9 +150,22 @@ async function tick(slot) {
     for(const p of newPools.markets)if(!(combined.get(poolKey(p))?.time>=p.time))combined.set(poolKey(p),p);
     for (const p of chain.markets) combined.set(poolKey(p), p);
     const indexedVenues=venues.snapshot();
+    const eventMarkets=eventPrices(eventWatcher.swaps(),watch,valuation,factories.entries);
+    eventMarkets.push(...solanaWatcher.markets(watch.symbolFor));
+    indexedVenues.markets.push(...eventMarkets);
+    const byVenue=new Map();
+    for(const m of indexedVenues.markets){
+      if(!byVenue.has(m.dexId))byVenue.set(m.dexId,{pools:new Set(),time:0});
+      const stats=byVenue.get(m.dexId);
+      stats.pools.add(poolKey(m));stats.time=Math.max(stats.time,m.time);
+    }
+    for(const source of indexedVenues.sources){
+      const stats=byVenue.get(source.id.slice('venue-dex-'.length));
+      if(stats)Object.assign(source,{ok:true,count:stats.pools.size,time:stats.time,lastLive:Math.max(source.lastLive,stats.time)});
+    }
     onMarkets?.(indexedVenues.markets);
     return {markets:[...combined.values()],venueMarkets:indexedVenues.markets,venueSources:indexedVenues.sources,coverage:chain.coverage,indexedReads:indexed.coverage,
-      registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
+      registry:{...registry,watchPools:indexedVenues.watchPools,eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage()],eventPricedPools:new Set(eventMarkets.map(poolKey)).size,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
   const wide=readWideFiles();
   const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,onProgress:progress,signals:true,
