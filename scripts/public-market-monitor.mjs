@@ -191,7 +191,7 @@ async function tick(slot) {
     }
     onMarkets?.(indexedVenues.markets);
     return {markets:[...combined.values()],venueMarkets:indexedVenues.markets,venueSources:indexedVenues.sources,coverage:chain.coverage,indexedReads:indexed.coverage,
-      registry:{...registry,watchPools:indexedVenues.watchPools,eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage(),...chainReaders.flatMap(source=>source.coverage())],swapReceipts:watch.spikes.receipts(),eventPricedPools:new Set(eventMarkets.map(poolKey)).size,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
+      registry:{...registry,watchPools:indexedVenues.watchPools,eventPricedPools:new Set(eventMarkets.map(poolKey)).size,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
   const wide=readWideFiles();
   const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,onProgress:progress,signals:true,
@@ -202,6 +202,9 @@ async function tick(slot) {
   const eligible = new Set(snapshot.eligible);
   for (const [id,row] of qualified) if (!eligible.has(id) || !isFreshQualified(row)) qualified.delete(id);
   const batch = snapshot.attempted;
+  snapshot.poolCoverage={...snapshot.poolCoverage,registry:{...snapshot.poolCoverage?.registry,
+    reportedAt:Date.now(),eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage(),...chainReaders.flatMap(source=>source.coverage())],
+    swapReceipts:watch.spikes.receipts()}};
   current = Object.assign(snapshot, {floor,intervalMs:interval,tested:0,attempted:[],verificationPending:!checking && batch.length>0});
   progress({...current,complete:true});
   poolCursor = current.poolCursor;

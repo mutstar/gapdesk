@@ -8,11 +8,11 @@ const modes=[['all','전체'],['received','스왑 수신'],['pending','직접 �
 function stamp(at:number){
   return new Date(at).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
 }
-export function DexStreamCoverage({receipts,streams,now}:{receipts?:Receipt[];streams?:Stream[];now:number}){
+export function DexStreamCoverage({receipts,streams,now,at}:{receipts?:Receipt[];streams?:Stream[];now:number;at?:number}){
   const [filter,setFilter]=useState('all');
   const rows=dexSwapCoverage(receipts,streams).map(r=>({...r,group:r.mode==='direct'?(r.evidence.length?'received':'pending'):r.mode}));
   return <details id="dex-streams" className="feeds dexStream"><summary>DEX 스왑 감시 · {rows.length}곳{receipts&&' · 직접 수신 '+rows.filter(r=>r.group==='received').length+'곳'}</summary>
-    <p>{receipts?'체결 시각은 한국 시간입니다. DEX별로 수신한 체인과 풀 버전을 펼쳐볼 수 있습니다.':'운영 수집기의 체결 기록을 불러오는 중입니다.'}</p>
+    <p>{receipts?(at?'집계 '+stamp(at)+' KST · ':'')+'DEX별로 마지막 체결 시각과 수신한 풀 버전을 확인할 수 있습니다.':'운영 수집기의 체결 기록을 불러오는 중입니다.'}</p>
     <nav aria-label="DEX 수집 방식">{modes.map(([key,label])=><button type="button" key={key} aria-pressed={filter===key} onClick={()=>setFilter(key)}>{label} {rows.filter(r=>key==='all'||r.group===key).length}</button>)}</nav>
     <ul>{rows.filter(r=>filter==='all'||r.group===filter).map(r=>{
       const last=r.evidence[0],bad=r.feeds.filter((s:Stream)=>s.error||!s.at||now-s.at>120000||s.backlog);
