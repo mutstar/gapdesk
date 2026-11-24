@@ -14,9 +14,11 @@ import {readWideFiles,wideMarkets} from '../lib/wide-markets.mjs';
 import {poolType,readPools} from '../lib/pool-reader.mjs';
 import {startFactoryRegistry} from '../lib/factory-registry.mjs';
 import {startRegistry} from '../lib/pool-registry.mjs';
+import {createVenueMonitor} from '../lib/venue-observations.mjs';
 
 const site = new URL('https://dokdo-gapdesk.awakeant23.chatgpt.site');
 const interval = 30_000;
+const venues=createVenueMonitor();
 const readNewPools=createIndexedPoolReader({intervalMs:500});
 let service = '';
 for await (const part of process.stdin) service += part.toString();
@@ -79,6 +81,7 @@ async function sendBook(frame){
   }finally{sendingBook=false}
 }
 async function tick(slot) {
+  void venues.refresh();
   const {amount:budget,min:floor,maxImpact=1} = await siteFetch('/api/settings');
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
   let seq=0, latest;
@@ -119,7 +122,9 @@ async function tick(slot) {
     const combined = new Map(indexed.markets.map(p => [poolKey(p), p]));
     for(const p of newPools.markets)if(!(combined.get(poolKey(p))?.time>=p.time))combined.set(poolKey(p),p);
     for (const p of chain.markets) combined.set(poolKey(p), p);
-    return {markets:[...combined.values()],coverage:chain.coverage,indexedReads:indexed.coverage,
+    const indexedVenues=venues.snapshot();
+    onMarkets?.(indexedVenues.markets);
+    return {markets:[...combined.values()],venueMarkets:indexedVenues.markets,venueSources:indexedVenues.sources,coverage:chain.coverage,indexedReads:indexed.coverage,
       registry:{...registry,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
   const wide=readWideFiles();
