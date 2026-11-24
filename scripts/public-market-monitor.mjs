@@ -16,6 +16,15 @@ import {startFactoryRegistry} from '../lib/factory-registry.mjs';
 import {startRegistry} from '../lib/pool-registry.mjs';
 import {dexVenues,networks} from '../lib/dex-venues.mjs';
 import {mkdirSync} from 'node:fs';
+import {createMoveAlgoStreams} from '../lib/move-algo-streams.mjs';
+import {createCosmosStarkStreams} from '../lib/cosmos-stark-streams.mjs';
+import {createMultiversxSwaps} from '../lib/multiversx-swaps.mjs';
+import {createMinswapLedger} from '../lib/minswap-ledger.mjs';
+import {createXrplBooks} from '../lib/xrpl-book-closes.mjs';
+import {createHypercoreTrades} from '../lib/hypercore-trades.mjs';
+import {createHydrationArchive} from '../lib/hydration-swap-archive.mjs';
+import {createVenueExportStream} from '../lib/venue-export-stream.mjs';
+import {createStellarStream} from '../lib/stellar-ledger-trades.mjs';
 import {createSolanaWatcher} from '../lib/solana-swaps.mjs';
 import {openWatchRegistry} from '../lib/watch-registry.mjs';
 import {createEventWatcher} from '../lib/pool-event-stream.mjs';
@@ -30,6 +39,11 @@ const watch=openWatchRegistry(fileURLToPath(new URL('../.sites-runtime/watch-poo
 const venues=createVenueMonitor({registry:watch});
 const eventWatcher=createEventWatcher(watch);
 const solanaWatcher=createSolanaWatcher(watch);
+const chainReaders=[
+  createMoveAlgoStreams(watch),createCosmosStarkStreams(watch),createStellarStream(watch),
+  createHypercoreTrades(watch),createHydrationArchive(watch),createVenueExportStream(watch),
+  createMultiversxSwaps(watch),createXrplBooks(watch),createMinswapLedger(watch),
+];
 const resolveKeys=createKeyResolver(watch);
 const chainSlug=new Map(Object.entries(networks).map(([slug,id])=>[id,slug]));
 const seeded=new Set();
@@ -177,7 +191,7 @@ async function tick(slot) {
     }
     onMarkets?.(indexedVenues.markets);
     return {markets:[...combined.values()],venueMarkets:indexedVenues.markets,venueSources:indexedVenues.sources,coverage:chain.coverage,indexedReads:indexed.coverage,
-      registry:{...registry,watchPools:indexedVenues.watchPools,eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage()],eventPricedPools:new Set(eventMarkets.map(poolKey)).size,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
+      registry:{...registry,watchPools:indexedVenues.watchPools,eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage(),...chainReaders.flatMap(source=>source.coverage())],swapReceipts:watch.spikes.receipts(),eventPricedPools:new Set(eventMarkets.map(poolKey)).size,pricedPools:combined.size,pricedContracts:new Set([...combined.values()].map(p=>p.chain+':'+p.token)).size}};
   };
   const wide=readWideFiles();
   const {snapshot,verify,signalData} = await prepareScan({budget,floor,maxImpact,cursor,poolCursor,limit:10,startedAt:slot,poolPass,onProgress:progress,signals:true,
@@ -220,6 +234,7 @@ async function tick(slot) {
 }
 function pollSwaps(){
   if(stopped)return;
+  for(const source of chainReaders)void source.refresh().catch(failed);
   void solanaWatcher.refresh().catch(failed);
   void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);
   void publishSwaps();
