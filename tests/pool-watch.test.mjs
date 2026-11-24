@@ -19,6 +19,7 @@ const stamp=1700000000;
 test('an established V4 pool enters the queue on swap without an Initialize or token allowlist',()=>{
   const swap={address:net.manager,topics:[v4Swap,pool,'0x'+word(1)],data:'0x'+[0,0,2n**96n,4,0,0].map(word).join('')};
   const block={header:{timestamp:stamp},logs:[{...swap,address:t0},swap]};
+  assert.deepEqual(events(net,[block]).ticks,[]); // a zero-amount log is not a trade
   assert.deepEqual(events(net,[block]).swaps,[{chain:'bsc',pool,protocol:'v4',time:stamp*1000,rawRatio:1}]);
   assert.equal(events(net,[{...block,logs:[{...swap,address:t0}]}]).pools.length,0);
   const init={address:net.manager,topics:[initialize,pool,'0x'+word(t0),'0x'+word(t1)]};
