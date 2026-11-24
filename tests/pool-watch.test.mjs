@@ -43,6 +43,16 @@ test('RPC history shrinks a rejected range and only acknowledges its successful 
   const page=await rpcRange(network,100,199,[initialize],request,events);
   assert.equal(page.last,124);assert.deepEqual(page.pools,[]);
 });
+test('RPC logs with a zero timestamp use the timestamp of the corresponding block',async()=>{
+  const network=rpcNetworks.find(n=>n.chain==='robinhood');
+  const request=async (_,options)=>{
+    const q=JSON.parse(options.body);
+    const result=q.method==='eth_getLogs'?[{address:network.manager,blockNumber:'0x64',blockTimestamp:'0x0',
+      topics:[initialize,pool,'0x'+word(t0),'0x'+word(t1)],logIndex:'0x0'}]:{timestamp:'0x'+stamp.toString(16)};
+    return Response.json({result});
+  };
+  assert.equal((await rpcRange(network,100,100,[initialize],request,events)).pools[0].pool,pool);
+});
 test('partial streams commit only decoded blocks and reject missing or invalid boundaries',async()=>{
   const b=number=>JSON.stringify({header:{number}});
   const r=await consumeBlocks(new Response([b(20),b(23)].join('\n')),20,30,x=>({count:x.length}));
