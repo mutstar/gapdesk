@@ -3,7 +3,7 @@ import {fileURLToPath} from 'node:url';
 import {createSpikeTracker} from '../lib/venue-spikes.mjs';
 import {createSignalOutbox} from '../lib/signal-outbox.mjs';
 import {observationFrame,sameSettings} from '../lib/observation-window.mjs';
-import {isFreshQualified} from '../lib/quote-freshness.mjs';
+import {isFreshQualified,matchesQualifiedSettings} from '../lib/quote-freshness.mjs';
 import {gzipSync} from 'node:zlib';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {poolValuationAssets} from '../lib/pool-anchors.mjs';
@@ -63,7 +63,7 @@ const outbox=await createSignalOutbox(fileURLToPath(new URL('../.sites-runtime/s
   body=>siteFetch('/api/signal-batches',{method:'POST',headers:{'content-type':'application/gzip'},body}),failed);
 // A slow upload cannot delay the market clock. Keep only the newest waiting revision.
 async function publish(snapshot) {
-  pending = {...snapshot,rows:[...qualified.values()].filter(r => isFreshQualified(r)).sort((a,b) => b.profit-a.profit)};
+  pending = {...snapshot,rows:[...qualified.values()].filter(r => matchesQualifiedSettings(r,snapshot.budget,snapshot.floor,snapshot.maxImpact)).sort((a,b) => b.profit-a.profit)};
   if (publishing) return;
   publishing = true;
   try {
@@ -94,10 +94,21 @@ async function sendBook(frame){
     }
   }finally{sendingBook=false}
 }
+let sendingSwaps=false;
+async function publishSwaps(){
+  if(sendingSwaps||stopped)return;
+  sendingSwaps=true;
+  try{
+    for(let batch=watch.spikes.pending();batch.length&&!stopped;batch=watch.spikes.pending()){
+      await siteFetch('/api/signal-batches',{method:'POST',headers:{'content-type':'application/gzip'},
+        body:gzipSync(JSON.stringify({kind:'swap-spikes',spikes:batch}),{level:1})});
+      watch.ackSpikes(batch.map(s=>s.id));
+    }
+  }catch(error){failed(error)}finally{sendingSwaps=false}
+}
 async function tick(slot) {
+  void publishSwaps();
   void venues.refresh();
-  void solanaWatcher.refresh().catch(failed);
-  void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);
   const {amount:budget,min:floor,maxImpact=1} = await siteFetch('/api/settings');
   if (!Number.isFinite(budget) || !Number.isFinite(floor)) throw Error('Invalid monitor settings');
   let seq=0, latest;
@@ -115,6 +126,7 @@ async function tick(slot) {
   progress({...config,startedAt:slot,at:Date.now(),complete:false,futures:{rows:[]}});
   const poolPass = async (markets,cex,onMarkets) => {
     const valuation = poolValuationAssets(markets,cex);
+    watch.spikes.setAssets(valuation.map(a=>({...a,slug:chainSlug.get(a.chain)})));
     const index = startRegistry(markets,{allowDetails});
     const factories = startFactoryRegistry(markets);
     const known = new Map(index.entries.map(p => [poolKey(p),p]));
@@ -206,6 +218,15 @@ async function tick(slot) {
     }).catch(failed).finally(() => {checking=false;});
   } catch (error) {checking=false;throw error;}
 }
+function pollSwaps(){
+  if(stopped)return;
+  void solanaWatcher.refresh().catch(failed);
+  void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);
+  void publishSwaps();
+}
+pollSwaps();
+const swapClock=setInterval(pollSwaps,4000);
+swapClock.unref();
 while (!stopped) {
   const slot = Math.floor(Date.now()/interval)*interval;
   try { await tick(slot); } catch (error) { failed(error); }

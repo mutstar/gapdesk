@@ -5,7 +5,7 @@ import {TradeLeg} from '../components/trade-leg';
 import {strictContractKey} from '../lib/contract-identity.mjs';
 import {ContractCopy} from '../components/contract-copy';
 import {useObservationFeed} from '../components/use-observation-feed';
-import {isFreshQualified} from '../lib/quote-freshness.mjs';
+import {isFreshQualified,matchesQualifiedSettings} from '../lib/quote-freshness.mjs';
 import {currentQualifiedRows,observationFrame} from '../lib/observation-window.mjs';
 import {walletGapReason} from '../lib/gap-reason-view.mjs';
 import {DexEmptySummary} from '../components/gap-diagnostics';
@@ -68,17 +68,15 @@ export default function Home(){
  useEffect(()=>{let live=true;function load(){if(address)publicBalances(address).then(b=>{if(live)setBalances(b)})}load();const id=setInterval(load,30000);return()=>{live=false;clearInterval(id)}},[address]);
  useEffect(()=>{const f=()=>setNow(Date.now());f();const t=setInterval(f,1000);return()=>clearInterval(t)},[]);
  useEffect(()=>{let live=true;const controller=new AbortController();let timer:ReturnType<typeof setTimeout>;
- let revision='',lastFull=0;
+ let lastFull=0;
  async function run(){
- const updates=!!revision&&Date.now()-lastFull<30000;
- if(!updates){lastFull=Date.now();setBusy(true)}
- try{const v=await scan(settings.amount,settings.min,settings.maxImpact,address,'',controller.signal,cycle.current.cursor,cycle.current.pool,updates,revision,frame=>{if(live)accept(frame,false)});
+ lastFull=Date.now();setBusy(true);
+ try{const v=await scan(settings.amount,settings.min,settings.maxImpact,address,'',controller.signal,cycle.current.cursor,cycle.current.pool);
  if(!v)return;
- revision=v.revision||'';
  if(live){accept(observationFrame(v,true),!!v.revision);
  cycle.current={cursor:v.nextCursor||'',pool:v.poolCursor||0};
  const freshIds=new Set(v.eligible),attempted=new Set(v.attempted);
- setSnapshot((old:Row|null)=>{const retained=v.revision||old?.budget!==v.budget||old?.floor!==v.floor||old?.maxImpact!==v.maxImpact?[]:(old?.rows||[]).filter((r:Row)=>isFreshQualified(r)&&freshIds.has(r.id)&&!attempted.has(r.id));const sameSettings=old?.budget===v.budget&&old?.floor===v.floor&&old?.maxImpact===v.maxImpact;return {...v,tokens:v.tokens?.length?v.tokens:(sameSettings?old?.tokens:[])||[],rows:[...v.rows,...retained].sort((a,b)=>b.profit-a.profit)}});setErr('')}}catch{if(live&&!updates){setErr('데이터를 받지 못했습니다. 새로고침으로 다시 시도하세요.')}}finally{if(live){setBusy(false);if(auto)timer=setTimeout(run,revision?5000:Math.max(1000,lastFull+30000-Date.now()))}}}
+ setSnapshot((old:Row|null)=>{const retained=v.revision||old?.budget!==v.budget||old?.floor!==v.floor||old?.maxImpact!==v.maxImpact?[]:(old?.rows||[]).filter((r:Row)=>isFreshQualified(r)&&freshIds.has(r.id)&&!attempted.has(r.id));const sameSettings=old?.budget===v.budget&&old?.floor===v.floor&&old?.maxImpact===v.maxImpact;return {...v,tokens:v.tokens?.length?v.tokens:(sameSettings?old?.tokens:[])||[],rows:[...v.rows,...retained].sort((a,b)=>b.profit-a.profit)}});setErr('')}}catch{if(live){setErr('데이터를 받지 못했습니다. 새로고침으로 다시 시도하세요.')}}finally{if(live){setBusy(false);if(auto)timer=setTimeout(run,Math.max(1000,lastFull+30000-Date.now()))}}}
  run();return()=>{live=false;controller.abort();clearTimeout(timer)}},[settings,address,auto,tick,accept]);
  const exploring=view==='갭 탐색';
  const [settingsOpen,setSettingsOpen]=useState(false);
@@ -96,7 +94,7 @@ export default function Home(){
  const active=sources.filter(s=>s.ok&&now-s.time<45000);
  const dexFeeds=sources.filter(s=>s.id.startsWith('venue-dex-'));
  const liveDex=dexFeeds.filter(s=>s.ok&&now-s.time<45000).length;
- const qualified=currentQualifiedRows(snapshot,book,now);
+ const qualified=currentQualifiedRows(snapshot,book,now).filter((r:Row)=>matchesQualifiedSettings(r,settings.amount,settings.min,settings.maxImpact,now));
  const waiting=!!(auto&&pc&&book&&now>=book.frame.startedAt+30000);
  const rows=qualified.filter((r:Row)=>(pair==='전체'||venueFamily(r.buyKind,r.sellKind)===pair)&&(!own||!walletGapReason(r,address,balances)));
  const filter=async(e:React.FormEvent)=>{e.preventDefault();const cfg={amount:Number(amount),min:Number(min),maxImpact:Number(impact)};apply(cfg);setSettingsNote('');
@@ -107,7 +105,7 @@ export default function Home(){
  const routeSteps=selected?steps(current?.row||selected):[],index=current?.i||0,step=routeSteps[index];
  const start=useCallback(async(r:Row)=>{const data=await scan(r.budget,settings.min,settings.maxImpact,address,r.id);
  const ca=strictContractKey(r.match);
- const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&isFreshQualified(x)&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
+ const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&matchesQualifiedSettings(x,r.budget,settings.min,settings.maxImpact)&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
  if(!v)throw Error('현재 견적으로는 이 경로가 조건을 충족하지 않습니다.');
  return v},[address,settings.min,settings.maxImpact]);
  async function act(){
@@ -147,7 +145,7 @@ export default function Home(){
    </dl>
    <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>
  </section>
- {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer observations={book} snapshot={snapshot} waiting={waiting} now={now} budget={settings.amount} profitFloor={settings.min} maxImpact={settings.maxImpact} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={snapshot?.revision||snapshot?.at||tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
+ {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer observations={book} snapshot={snapshot} waiting={waiting} now={now} budget={settings.amount} profitFloor={settings.min} maxImpact={settings.maxImpact} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={auto?Math.floor(now/30000)+'-'+tick:tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
  {rows.map((r:Row)=><article className="marketCard" key={r.id}><header className="marketCardHead"><h3>{r.symbol}</h3><div className="gapValue qualifiedGain"><span>예상 순차익</span><strong>+{format(r.profit)} USDC</strong></div></header>
  <QualifiedPair r={r} now={now}/><div className="quoteStamp"><span>매수 호가 {tm(r.buyQuoteAt)} KST</span><span>매도 호가 {tm(r.sellQuoteAt)} KST</span></div><div className="marketTools"><span className="marketState">{r.bridge||'동일 네트워크'} · {chainName(r.from)}{r.from!==r.to?' → '+chainName(r.to):''}</span><button type="button" className="bridgeAction" onClick={()=>{select(r);setJobNote('')}}>경로 확인</button></div><div className="marketActions">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></article>)}
  {!rows.length&&pair==='DEX–DEX'&&!own&&!err&&<DexEmptySummary observations={book} snapshot={snapshot} budget={settings.amount} floor={settings.min} maxImpact={settings.maxImpact} now={now}/>}

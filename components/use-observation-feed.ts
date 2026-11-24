@@ -25,6 +25,7 @@ export function useObservationFeed(settings:Config,auto:boolean,tick:number,now:
     let active=true,revision='',timer:ReturnType<typeof setTimeout>;
     const abort=new AbortController();
     async function poll(){
+      const start=Date.now();
       try{
         const q=new URLSearchParams({amount:String(amount),floor:String(min),impact:String(maxImpact),revision});
         const r=await fetch('/api/observations?'+q,{cache:'no-store',signal:abort.signal});
@@ -33,7 +34,7 @@ export function useObservationFeed(settings:Config,auto:boolean,tick:number,now:
           if(active){accept(frame,true);revision=r.headers.get('X-Observation-Revision')||''}
         }
       }catch{/* Keep the last source-stamped observation until its display limit. */}
-      finally{if(active&&auto)timer=setTimeout(poll,1800)}
+      finally{if(active&&auto)timer=setTimeout(poll,Math.max(1000,start+30000-Date.now()))}
     }
     void poll();
     return ()=>{active=false;abort.abort();clearTimeout(timer)};

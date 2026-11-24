@@ -3,7 +3,18 @@ import test from 'node:test';
 import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import {logScan,history as observations} from '../lib/scan-store.ts';
-import {logSignals,signalHistory,InvalidSignalQuery} from '../lib/signal-store.ts';
+import {logSwapSpikes,logSignals,signalHistory,InvalidSignalQuery} from '../lib/signal-store.ts';
+
+test('independent swap batches retain same-second excursions once and cannot close a gap',async t=>{
+  const {db,log,history}=setup(t);
+  await log(frame(0));
+  const spike={id:'a',side:'down',symbol:'ACE',venue:'Uniswap V4 · BNB Chain',marketId:'swap/bsc/pool/target/USDT',
+    baselineAt:start,at:start,baselinePrice:1,price:0.25,changePct:-75,thresholdPct:10,windowSec:60};
+  const batch=[spike,{...spike,id:'b',side:'up',baselinePrice:.25,price:1,changePct:300}];
+  await logSwapSpikes(batch,start+90000,db);await logSwapSpikes(batch,start+120000,db);
+  assert.deepEqual((await history({kind:'spikes'})).items.map(r=>r.id),['b','a']);
+  assert.equal((await history({kind:'gaps'},start+10000)).items[0].state,'active');
+});
 
 const start=1700000000000,marketIds=['bitget:ACE','kucoin:ACE'];
 const match={chain:42161,token:'0x'+'12'.repeat(20)};

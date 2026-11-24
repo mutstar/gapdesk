@@ -1,5 +1,6 @@
 'use client';
 import {useEffect,useState} from 'react';
+import {networks} from '../lib/dex-venues.mjs';
 import {ContractCopy} from './contract-copy';
 import {MarketTabs} from './market-tabs';
 import {TradeLeg} from './trade-leg';
@@ -30,11 +31,13 @@ function GapRow({r}:{r:Row}){
   </article>
 }
 function SpikeRow({r}:{r:Row}){
-  const unitMatch=/:(bbo|last):([^:]+)$/.exec(r.marketId||''), unit=unitMatch?decodeURIComponent(unitMatch[2]):'USDC', last=unitMatch?.[1]==='last';
-  const up=r.side==='up', poolMark=r.venue?.startsWith('Uniswap V4 ·');
+  const swap=r.marketId?.startsWith('swap/')?r.marketId.split('/').map(decodeURIComponent):null;
+  const unitMatch=/:(bbo|last):([^:]+)$/.exec(r.marketId||''), unit=swap?(swap[4]||'지수'):unitMatch?decodeURIComponent(unitMatch[2]):'USDC', last=unitMatch?.[1]==='last';
+  const up=r.side==='up', poolMark=!!swap||r.venue?.startsWith('Uniswap V4 ·');
   return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {last?(up?'체결가 급등':'체결가 급락'):poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
-    <div className="signalRoute">{r.venue} · {windowText(r.windowSec)} 구간</div>
+    <div className="signalRoute">{r.venue} · {swap?'스왑 기준 최근 1분':windowText(r.windowSec)+' 구간'}</div>
     <div className="signalNumbers"><span>{last?'기준 체결가':poolMark?'기준 풀 가격':up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{last?'감지 체결가':poolMark?'감지 풀 가격':up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} {unit}</b></span></div>
+    {swap&&<details><summary>풀 정보</summary><p>풀 <code style={{overflowWrap:'anywhere'}}>{swap[2]}</code></p>{swap[3]&&<ContractCopy item={{chain:(networks as Record<string,number|string>)[swap[1]]??swap[1],token:swap[3]}}/>}{!swap[4]&&<p>기준 스왑 가격을 100으로 환산한 지수입니다.</p>}</details>}
     <p>기준 {kst(r.baselineAt)} KST · {r.corroborated?'타 거래소 시세 대조됨':'단일 거래소 관측'}</p></article>
 }
 function Earlier({symbol,before}:{symbol:string,before:number}){
@@ -67,7 +70,7 @@ export function SignalHistory({kind,revision}:Props){
       }catch{if(!c.signal.aborted)setError(true)}
     },200);return()=>{clearTimeout(t);c.abort()}
   },[kind,gaps,raw,market,family,key,place,hours,cursor,refresh,retry]);
-  return <><div className="panelHead"><div><h2>{gaps?'신규 갭 기록':'거래소별 급등락 기록'}</h2><p className="hint">{gaps?'두 마켓에서 체인과 CA가 일치한 갭의 최초 감지 금액·견적을 표시합니다. 견적 통과는 예상 체결 기준입니다.':'동일 마켓의 30초~1시간 구간에서 10% 이상 움직인 시점을 표시합니다.'}</p></div></div>
+  return <><div className="panelHead"><div><h2>{gaps?'신규 갭 기록':'거래소별 급등락 기록'}</h2><p className="hint">{gaps?'두 마켓에서 체인과 CA가 일치한 갭의 최초 감지 금액·견적을 표시합니다. 견적 통과는 예상 체결 기준입니다.':'풀 스왑은 직전 1분의 고가·저가 대비 10% 이상 움직이면 기록합니다. 거래소 호가는 30초~1시간 구간으로 비교합니다.'}</p></div></div>
     {gaps&&<MarketTabs family={family} product={market} onChange={(f,m)=>{setFamily(f);setMarket(m);first()}}/>}
     <div className="signalFilters"><label><Search size={14}/> 토큰<input type="search" placeholder="예: ACE" value={symbol} onChange={e=>{setSymbol(e.target.value);first()}}/></label>
     <label>기간<select value={hours} onChange={e=>{setHours(Number(e.target.value));first()}}>{[[1,'1시간'],[6,'6시간'],[24,'24시간'],[168,'7일']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>

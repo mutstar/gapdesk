@@ -27,6 +27,25 @@ async function storage(){
   return env.DB;
 }
 
+function spikeStatements(db:D1Database,spikes:Row[],seen:number){
+  const tx:D1PreparedStatement[]=[];
+  const sql=(s:string,...args:(string|number|null)[])=>tx.push(db.prepare(s).bind(...args));
+  for(const chunk of chunks(spikes.filter(r=>str(r.id,1600)&&str(r.symbol,150)&&str(r.venue,300)&&str(r.marketId,800)&&
+    ['up','down'].includes(r.side)&&integer(r.at)&&integer(r.baselineAt)&&r.at>=seen-8*DAY&&r.at<=seen+5000&&(r.baselineAt<r.at||r.baselineAt===r.at&&r.marketId.startsWith('swap/'))&&
+    positive(r.baselinePrice)&&positive(r.price)&&finite(r.changePct)&&positive(r.thresholdPct)&&positive(r.windowSec)),100)){
+    sql(`INSERT INTO venue_spikes(id,symbol,venue,market_id,side,window_sec,at,baseline_at,baseline_price,price,change_pct,threshold_pct,corroborated)
+      SELECT v->>'$.id',v->>'$.symbol',v->>'$.venue',v->>'$.marketId',v->>'$.side',v->>'$.windowSec',v->>'$.at',v->>'$.baselineAt',
+        v->>'$.baselinePrice',v->>'$.price',v->>'$.changePct',v->>'$.thresholdPct',COALESCE(v->>'$.corroborated',0)
+      FROM (SELECT value AS v FROM json_each(?)) WHERE 1 ON CONFLICT(id) DO NOTHING`,JSON.stringify(chunk));
+  }
+  return tx;
+}
+export async function logSwapSpikes(spikes:Row[],at:number,connection?:D1Database){
+  const db=connection??await storage();
+  const tx=spikeStatements(db,spikes,at);
+  if(tx.length)await db.batch(tx);
+}
+
 export async function logSignals(scan:Row,connection?:D1Database){
   if(!Array.isArray(scan.signalGaps))return;
   const db=connection??await storage(), cycle=scan.startedAt, seen=scan.at;
@@ -82,14 +101,7 @@ export async function logSignals(scan:Row,connection?:D1Database){
       AND ?>=opened_at AND ?<=opened_at+? AND (?<>'passed' OR ?>=floor)`,
       r.status,r.status==='passed'?r.profit:null,r.checkedAt,r.cycle,r.id,key,r.checkedAt,r.checkedAt,MAX_GAP_MS,r.status,r.profit??0);
   }
-  for(const chunk of chunks(spikes.filter(r=>str(r.id,1600)&&str(r.symbol,150)&&str(r.venue,300)&&str(r.marketId,800)&&
-    ['up','down'].includes(r.side)&&integer(r.at)&&integer(r.baselineAt)&&r.at>=seen-8*DAY&&r.at<=seen+5000&&r.baselineAt<r.at&&
-    positive(r.baselinePrice)&&positive(r.price)&&finite(r.changePct)&&positive(r.thresholdPct)&&positive(r.windowSec)),100)){
-    sql(`INSERT INTO venue_spikes(id,symbol,venue,market_id,side,window_sec,at,baseline_at,baseline_price,price,change_pct,threshold_pct,corroborated)
-      SELECT v->>'$.id',v->>'$.symbol',v->>'$.venue',v->>'$.marketId',v->>'$.side',v->>'$.windowSec',v->>'$.at',v->>'$.baselineAt',
-        v->>'$.baselinePrice',v->>'$.price',v->>'$.changePct',v->>'$.thresholdPct',COALESCE(v->>'$.corroborated',0)
-      FROM (SELECT value AS v FROM json_each(?)) WHERE 1 ON CONFLICT(id) DO NOTHING`,JSON.stringify(chunk));
-  }
+  tx.push(...spikeStatements(db,spikes,seen));
   // Hourly housekeeping, retaining a full seven days plus a rollover day.
   sql(`DELETE FROM gap_episodes WHERE last_seen<? AND ?>${clock}/3600000`,seen-8*DAY,Math.floor(cycle/3600000));
   sql(`DELETE FROM venue_spikes WHERE at<? AND ?>${clock}/3600000`,seen-8*DAY,Math.floor(cycle/3600000));
