@@ -120,6 +120,19 @@ async function publishSwaps(){
     }
   }catch(error){failed(error)}finally{sendingSwaps=false}
 }
+function streamReport(){
+  return {reportedAt:Date.now(),eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage(),...chainReaders.flatMap(s=>s.coverage())].filter(s=>s?.chain),
+    swapReceipts:watch.spikes.receipts()};
+}
+let lastReport=0,reporting=false;
+async function publishCoverage(){
+  if(reporting||Date.now()-lastReport<30000)return;
+  reporting=true;
+  try{
+    await siteFetch('/api/relay?view=dex-streams',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(streamReport())});
+    lastReport=Date.now();
+  }catch(e){failed(e)}finally{reporting=false}
+}
 async function tick(slot) {
   void publishSwaps();
   void venues.refresh();
@@ -202,9 +215,7 @@ async function tick(slot) {
   const eligible = new Set(snapshot.eligible);
   for (const [id,row] of qualified) if (!eligible.has(id) || !isFreshQualified(row)) qualified.delete(id);
   const batch = snapshot.attempted;
-  snapshot.poolCoverage={...snapshot.poolCoverage,registry:{...snapshot.poolCoverage?.registry,
-    reportedAt:Date.now(),eventStreams:[...eventWatcher.coverage(),solanaWatcher.coverage(),...chainReaders.flatMap(source=>source.coverage())],
-    swapReceipts:watch.spikes.receipts()}};
+  snapshot.poolCoverage={...snapshot.poolCoverage,registry:{...snapshot.poolCoverage?.registry,...streamReport()}};
   current = Object.assign(snapshot, {floor,intervalMs:interval,tested:0,attempted:[],verificationPending:!checking && batch.length>0});
   progress({...current,complete:true});
   poolCursor = current.poolCursor;
@@ -237,6 +248,7 @@ async function tick(slot) {
 }
 function pollSwaps(){
   if(stopped)return;
+  void publishCoverage();
   for(const source of chainReaders)void source.refresh().catch(failed);
   void solanaWatcher.refresh().catch(failed);
   void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);

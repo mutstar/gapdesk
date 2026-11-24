@@ -24,9 +24,11 @@ export async function GET(req:Request){
  const savedEntries=only?relay?.rows.find((r:any)=>r.id===only)?.depthChecks?.flatMap((c:any)=>c.entries)||[]:[];
  async function run(onProgress?: (frame:any)=>void){
    const data=await wideScan({budget,floor,address,only,cursor,poolCursor,maxImpact,savedEntries,onProgress});
+   const coverage=!only?await readState('dex-stream-coverage').catch(()=>null):null;
+   const registry=data.poolCoverage&&'registry' in data.poolCoverage?data.poolCoverage.registry:null;
    let recorded=false;
    if(!only)try{await logScan(data);recorded=true}catch{}
-   return {...data,floor,rows:data.rows.filter((r:any)=>isFreshQualified(r)),mode:'클라우드 직접 조회',recorded};
+   return {...data,...(coverage?{poolCoverage:{...data.poolCoverage,registry:{...registry,...coverage}}}:{}),floor,rows:data.rows.filter((r:any)=>isFreshQualified(r)),mode:'클라우드 직접 조회',recorded};
  }
  if(!only && p.get('stream')==='1'){
    let closed=false;
