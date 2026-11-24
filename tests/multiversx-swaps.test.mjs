@@ -40,6 +40,7 @@ test('a failed finalized block is retried without committing a gap or repeating 
     return Response.json({code:'successful',data});
   }});
   await reader.refresh();assert.match(reader.coverage()[0].error,/continuity/);
+  await reader.refresh().catch(assert.fail); // The shared polling timer also runs during backoff.
   assert.deepEqual(commits,[[height,1]]);
   broken=false;at=6000;await reader.refresh();await reader.refresh();
   assert.deepEqual(commits,[[height,1],[height+1,0]]);assert.equal(reader.coverage()[0].observed,1);
