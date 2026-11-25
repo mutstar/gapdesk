@@ -30,7 +30,7 @@ type Props={
 const priceFormat=new Intl.NumberFormat('en-US',{maximumSignificantDigits:7});
 export function TradeLeg({side,venue,chain,perp,kind,transfer,now=0,price,caption,children}:Props){
   const buy=side==='buy';
-  const action=perp?(buy?'롱 진입':'숏 진입'):(buy?'사는 곳':'파는 곳');
+  const action=perp?(buy?'롱 진입':'숏 진입'):(buy?'매수처':'매도처');
   const hasPrice=typeof price==='number'&&Number.isFinite(price)&&price>0;
   return <div className={'tradeLeg '+side}>
     <div className="legAction">{action}</div>

@@ -32,7 +32,8 @@ test('catalog keeps all contracts, distinguishes same-ticker assets and observes
       { symbol: 'ACE', ask: 3, bid: 2, networks: [{ chain: 56, token: token(20), decimals: 2 }, { chain: 8453, token: token(30), decimals: 2 }] },
     ];
     const first = await loadDex(cex);
-    assert.equal(first.poolCoverage.contracts, 4 * 38 + 2);
+    assert.ok(first.markets.some(m=>m.chain===56&&m.referenceOnly&&m.symbol==='MLTP'&&m.token==='0xf390fb7d16f2cbba037c1fc48862463116a7e545'));
+    assert.equal(first.poolCoverage.contracts, 4 * 38 + 2 + 1);
     const asset = first.markets.find(m => m.chain === 56 && m.token === token(20) && !m.pool);
     const linked = first.markets.find(m => m.chain === 8453 && m.token === token(30));
     const unrelated = first.markets.find(m => m.chain === 1 && m.token === token(11));

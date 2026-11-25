@@ -3,24 +3,27 @@ import {useState,useEffect,useRef,useCallback} from 'react';
 import {Activity,Radio,Wallet,RefreshCw,SlidersHorizontal,Layers,Check,ArrowUpRight,Clock3,ChevronRight,X,Pause,Play,Network,ShieldCheck} from 'lucide-react';
 import {DexStreamCoverage} from '../components/dex-stream-coverage';
 import {TradeLeg} from '../components/trade-leg';
-import {strictContractKey} from '../lib/contract-identity.mjs';
+import {routeContractsMatch,strictContractKey} from '../lib/contract-identity.mjs';
 import {ContractCopy} from '../components/contract-copy';
 import {useObservationFeed} from '../components/use-observation-feed';
 import {isFreshQualified,matchesQualifiedSettings} from '../lib/quote-freshness.mjs';
 import {currentQualifiedRows,observationFrame} from '../lib/observation-window.mjs';
-import {walletGapReason} from '../lib/gap-reason-view.mjs';
+import {executionLabels,executionStatus,routePath} from '../lib/execution-status.mjs';
 import {DexEmptySummary} from '../components/gap-diagnostics';
 import {GapExplorer} from '../components/gap-explorer';
 import {families,venueFamily} from '../lib/venue-family.mjs';
 import {SignalHistory} from '../components/signal-history';
 import {TokenUniverse} from '../components/token-universe';
 import {CHAINS} from '../lib/assets.js';
-import {chainName,checkTx,connect,publicBalances,sendStep,steps} from '../lib/wallet.js';
+import {chainName,checkTx,connect,publicBalances,quoteStep,sendStep,steps} from '../lib/wallet.js';
 type Row=Record<string,any>;
 function venuePage(row:Row,buy:boolean){
  const venue=buy?row.buy:row.sell,pair=buy?row.buyPair:row.sellPair;
- if(venue==='Gate.io')return 'https://www.gate.com/trade/'+encodeURIComponent(pair);
- return venue==='KuCoin'?'https://www.kucoin.com/trade/'+encodeURIComponent(pair||'ETH-USDC'):'https://www.bitget.com/spot/'+encodeURIComponent(pair||'ETHUSDC');
+ if(venue==='Gate.io'&&pair)return 'https://www.gate.com/trade/'+encodeURIComponent(pair);
+ if(venue==='KuCoin'&&pair)return 'https://www.kucoin.com/trade/'+encodeURIComponent(pair);
+ if(venue==='Bitget'&&pair)return 'https://www.bitget.com/spot/'+encodeURIComponent(pair);
+ const sites:Record<string,string>={kucoin:'https://www.kucoin.com',bitget:'https://www.bitget.com',gate:'https://www.gate.com',gateio:'https://www.gate.com',bybit:'https://www.bybit.com',okx:'https://www.okx.com',binance:'https://www.binance.com'};
+ return sites[String(buy?row.buyVenue||venue:row.sellVenue||venue).toLowerCase()];
 }
 const chains:Record<string,{name:string,gas:string,explorer:string}>=CHAINS;
 const format=(v:number,d=2)=>v.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -54,7 +57,7 @@ function QualifiedPair({r,now}:{r:Row,now:number}){
 export default function Home(){
  const [view,setView]=useState('갭 탐색'),[pair,setPair]=useState('전체'),[amount,setAmount]=useState('1000'),[min,setMin]=useState('5'),[impact,setImpact]=useState('1');
  const [settingsNote,setSettingsNote]=useState('');
- const [settings,apply]=useState({amount:1000,min:5,maxImpact:1}),[own,setOwn]=useState(false),[auto,setAuto]=useState(true),[tick,reset]=useState(0);
+ const [settings,apply]=useState({amount:1000,min:5,maxImpact:1}),[executionFilter,setExecutionFilter]=useState('all'),[auto,setAuto]=useState(true),[tick,reset]=useState(0);
  const [savedSnapshot,setSnapshot]=useState<Row|null>(null),[busy,setBusy]=useState(true),[err,setErr]=useState(''),[now,setNow]=useState(0);
  const snapshot=savedSnapshot?.budget===settings.amount&&savedSnapshot?.floor===settings.min&&savedSnapshot?.maxImpact===settings.maxImpact?savedSnapshot:null;
  const {book,pc,accept}=useObservationFeed(settings,auto,tick,now);
@@ -95,19 +98,25 @@ export default function Home(){
  const active=sources.filter(s=>s.ok&&now-s.time<45000);
  const dexFeeds=sources.filter(s=>s.id.startsWith('venue-dex-'));
  const liveDex=dexFeeds.filter(s=>s.ok&&now-s.time<45000).length;
- const qualified=currentQualifiedRows(snapshot,book,now).filter((r:Row)=>matchesQualifiedSettings(r,settings.amount,settings.min,settings.maxImpact,now));
+ const qualified:Row[]=currentQualifiedRows(snapshot,book,now).filter((r:Row)=>matchesQualifiedSettings(r,settings.amount,settings.min,settings.maxImpact,now));
  const waiting=!!(auto&&pc&&book&&now>=book.frame.startedAt+30000);
- const rows=qualified.filter((r:Row)=>(pair==='전체'||venueFamily(r.buyKind,r.sellKind)===pair)&&(!own||!walletGapReason(r,address,balances)));
+ const candidates=qualified.filter((r:Row)=>pair==='전체'||venueFamily(r.buyKind,r.sellKind)===pair)
+   .map((r:Row)=>({r,status:executionStatus(r,address,balances,now)})).filter(item=>item.status.group!=='blocked');
+ const rows=candidates.filter(item=>executionFilter==='all'||item.status.group===executionFilter);
  const filter=async(e:React.FormEvent)=>{e.preventDefault();const cfg={amount:Number(amount),min:Number(min),maxImpact:Number(impact)};apply(cfg);setSettingsNote('');
  try{const r=await fetch('/api/scan?mode=settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(cfg)});if(!r.ok)throw Error();setSettingsNote('모니터링 금액을 저장했어요.')}catch{setSettingsNote('현재 화면에 적용했습니다. 서버 저장을 확인해주세요.')}};
  useEffect(()=>{let mounted=true;fetch('/api/settings',{cache:'no-store'}).then(r=>r.json()).then((v:any)=>{if(mounted&&v?.amount&&Number.isFinite(v.min)&&(v.amount!==1000||v.min!==5||(v.maxImpact??1)!==1)){apply({...v,maxImpact:v.maxImpact??1});setAmount(String(v.amount));setMin(String(v.min));setImpact(String(v.maxImpact??1))}}).catch(()=>{});return()=>{mounted=false}},[]);
  const resume=()=>{select(jobState!.row);setJobNote('')};
  const current=selected&&jobState?.row?.id===selected.id?jobState:null;
  const routeSteps=selected?steps(current?.row||selected):[],index=current?.i||0,step=routeSteps[index];
- const start=useCallback(async(r:Row)=>{const data=await scan(r.budget,settings.min,settings.maxImpact,address,r.id);
+ const start=useCallback(async(r:Row)=>{const data=r.targetMatch?await scan(r.budget,settings.min,settings.maxImpact):await scan(r.budget,settings.min,settings.maxImpact,address,r.id);
  const ca=strictContractKey(r.match);
- const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&matchesQualifiedSettings(x,r.budget,settings.min,settings.maxImpact)&&strictContractKey(x.match)===ca&&strictContractKey({chain:x.from,token:x.fromToken})===ca&&strictContractKey({chain:x.to,token:x.toToken})===ca);
+ const v=ca&&data?.rows.find((x:Row)=>x.id===r.id&&matchesQualifiedSettings(x,r.budget,settings.min,settings.maxImpact)&&strictContractKey(x.match)===ca&&routeContractsMatch(x));
  if(!v)throw Error('현재 견적으로는 이 경로가 조건을 충족하지 않습니다.');
+ if(v.targetMatch){
+   await Promise.all(steps(v).map(step=>quoteStep(step,address)));
+   if(!isFreshQualified(v,Date.now()))throw Error('경로 견적이 만료됐어요. 다시 조회해 주세요.');
+ }
  return v},[address,settings.min,settings.maxImpact]);
  async function act(){
  if(lock.current||!selected)return;lock.current=true;setActing(true);setJobNote('');
@@ -125,8 +134,7 @@ export default function Home(){
    if(status==='failed'){job({...current,pending:null});setJobNote('트랜잭션이 실패했습니다. 지갑에서 내역을 확인해주세요.');return}
    job({...current,i:current.i+(current.pending.type==='approval'?0:1),pending:null});return;
  }
- const saved=current.row,ca=strictContractKey(saved.match);
- if(!ca||strictContractKey({chain:saved.from,token:saved.fromToken})!==ca||strictContractKey({chain:saved.to,token:saved.toToken})!==ca)
+ if(!routeContractsMatch(current.row))
    throw Error('이전 경로의 CA를 확인할 수 없어요. 최신 견적으로 경로를 다시 선택해 주세요.');
  if(step?.manual){job({...current,i:current.i+1});return}
  if(!step)return;
@@ -146,20 +154,22 @@ export default function Home(){
    </dl>
    <div className="pekoraArt"><img src="/pekora-chart.webp" alt="당근을 든 우사다 페코라 팬아트" /></div>
  </section>
- {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer observations={book} snapshot={snapshot} waiting={waiting} now={now} budget={settings.amount} profitFloor={settings.min} maxImpact={settings.maxImpact} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={auto?Math.floor(now/30000)+'-'+tick:tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>금액별 검증 결과</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
- {rows.map((r:Row)=><article className="marketCard" key={r.id}><header className="marketCardHead"><h3>{r.symbol}</h3><div className="gapValue qualifiedGain"><span>예상 순차익</span><strong>+{format(r.profit)} USDC</strong></div></header>
- <QualifiedPair r={r} now={now}/><div className="quoteStamp"><span>매수 호가 {tm(r.buyQuoteAt)} KST</span><span>매도 호가 {tm(r.sellQuoteAt)} KST</span></div><div className="marketTools"><span className="marketState">{r.bridge||'동일 네트워크'} · {chainName(r.from)}{r.from!==r.to?' → '+chainName(r.to):''}</span><button type="button" className="bridgeAction" onClick={()=>{select(r);setJobNote('')}}>경로 확인</button></div><div className="marketActions">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></article>)}
- {!rows.length&&pair==='DEX–DEX'&&!own&&!err&&<DexEmptySummary observations={book} snapshot={snapshot} budget={settings.amount} floor={settings.min} maxImpact={settings.maxImpact} now={now}/>}
- {!rows.length&&(pair!=='DEX–DEX'||own||!!err)&&<p className="signalEmpty" role="status">{err||(!snapshot&&busy?'최신 호가를 불러오는 중…':'현재 조건을 충족한 갭이 없어요.')}</p>}
+ {<div className={'workspace '+(exploring||view==='신규 갭'||view==='거래소별 급등락'?'historyWorkspace':'')}><section className="board">{exploring?<GapExplorer address={address} observations={book} snapshot={snapshot} waiting={waiting} now={now} budget={settings.amount} profitFloor={settings.min} maxImpact={settings.maxImpact} busy={busy} error={err} verified={qualified} onOpen={r=>{select(r);setJobNote('')}}/>:view==='신규 갭'||view==='거래소별 급등락'?<SignalHistory key={view} kind={view==='신규 갭'?'gaps':'spikes'} revision={auto?Math.floor(now/30000)+'-'+tick:tick}/>:view==='전체 토큰'?<TokenUniverse tokens={snapshot?.tokens||[]} busy={busy} at={snapshot?.at||0} budget={settings.amount} floor={settings.min} address={address} now={now} verified={qualified}/>:<><div className="panelHead"><div><h2>{settings.amount.toLocaleString()} USDC 기준</h2></div><span className="count">{rows.length}건</span></div><div className="tabs" aria-label="거래소 조합">{families.map(p=><button key={p} aria-pressed={pair===p} className={pair===p?'selected':''} onClick={()=>setPair(p)}>{p}</button>)}</div>
+ <div className="executionTabs" role="group" aria-label="실행 조건">{Object.entries({all:'전체 경로',...executionLabels}).map(([key,label])=><button type="button" key={key} aria-pressed={executionFilter===key} onClick={()=>setExecutionFilter(key)}>{label} <b>{key==='all'?candidates.length:candidates.filter(item=>item.status.group===key).length}</b></button>)}</div>
+ {rows.map(({r,status})=><article className="marketCard" key={r.id}><header className="marketCardHead"><h3>{r.symbol}</h3><div className="gapValue qualifiedGain"><span>예상 순차익</span><strong>+{format(r.profit)} USDC</strong></div></header>
+ <div className="executionInfo"><strong data-mode={status.group}>{executionLabels[status.group as keyof typeof executionLabels]}</strong><span>{status.detail}</span></div>
+ <QualifiedPair r={r} now={now}/><div className="quoteStamp"><span>매수 호가 {tm(r.buyQuoteAt)} KST</span><span>매도 호가 {tm(r.sellQuoteAt)} KST</span></div><div className="marketTools"><span className="marketState">이동 경로 · {routePath(r.from,r.to,r.bridge,r.duration)}</span><button type="button" className="bridgeAction" onClick={()=>{select(r);setJobNote('')}}>경로 확인</button></div><div className="marketActions">{r.fromToken&&<ContractCopy item={{chain:r.from,token:r.fromToken}}/>}{r.toToken&&(r.to!==r.from||r.toToken!==r.fromToken)&&<ContractCopy item={{chain:r.to,token:r.toToken}}/>}</div></article>)}
+ {!rows.length&&pair==='DEX–DEX'&&executionFilter==='all'&&!err&&<DexEmptySummary observations={book} snapshot={snapshot} budget={settings.amount} floor={settings.min} maxImpact={settings.maxImpact} now={now}/>}
+ {!rows.length&&(pair!=='DEX–DEX'||executionFilter!=='all'||!!err)&&<p className="signalEmpty" role="status">{err||(!snapshot&&busy?'최신 호가를 불러오는 중…':'선택한 금액과 실행 조건에 맞는 갭이 없어요.')}</p>}
  <div className="panelFoot"><span><Clock3 size={14}/> {snapshot?tm(snapshot.at)+' KST':'첫 스캔 대기'}</span><span>{busy?'새 견적 확인 중':auto?'다음 스캔 대기':'자동 갱신 일시정지'}</span></div>
  </>}{jobState&&<button className="resume" onClick={resume}>진행 중인 경로 확인 <ChevronRight size={16}/></button>}</section>
- <aside className={'controls '+(settingsOpen?'settingsExpanded':'')}><div className="panelHead"><h2><SlidersHorizontal size={20}/> 스캔 설정</h2><button type="button" className="mobileSettings" aria-expanded={settingsOpen} aria-controls="scan-settings-form" onClick={()=>setSettingsOpen(v=>!v)}>{settings.amount.toLocaleString()} USDC · {settingsOpen?'접기':'변경'}</button></div><form id="scan-settings-form" onSubmit={filter}><label>거래 금액<div className="field"><input aria-label="거래 금액" required type="number" min="10" max="100000" step=".01" value={amount} onChange={e=>setAmount(e.target.value)}/><span>USDC</span></div></label><label>최소 예상 순차익<div className="field"><input aria-label="최소 예상 순차익" required type="number" min="0" max="100000" step=".01" value={min} onChange={e=>setMin(e.target.value)}/><span>USDC</span></div></label><label>DEX 한쪽 최대 체결가 차이<div className="field"><input aria-label="DEX 한쪽 최대 체결가 차이" required type="number" min="0.01" max="99.99" step=".01" value={impact} onChange={e=>setImpact(e.target.value)}/><span>%</span></div><small>풀 현물가 대비 불리한 차이로, 풀 수수료를 포함해요.</small></label>{view==='먹을 수 있는 갭'&&<label className="switchLine"><span>내 지갑으로 실행 가능</span><input type="checkbox" checked={own} onChange={e=>setOwn(e.target.checked)}/><i/></label>}<button className="apply">조건 적용</button>{settingsNote&&<small role="status">{settingsNote}</small>}</form><div className="scanCounts"><b>{snapshot?.mode||'이번 스캔'}</b><p>{snapshot?'최근 수집 '+tm(snapshot.at)+' KST':'첫 수집 대기'}</p></div></aside></div>}
+ <aside className={'controls '+(settingsOpen?'settingsExpanded':'')}><div className="panelHead"><h2><SlidersHorizontal size={20}/> 스캔 설정</h2><button type="button" className="mobileSettings" aria-expanded={settingsOpen} aria-controls="scan-settings-form" onClick={()=>setSettingsOpen(v=>!v)}>{settings.amount.toLocaleString()} USDC · {settingsOpen?'접기':'변경'}</button></div><form id="scan-settings-form" onSubmit={filter}><label>거래 금액<div className="field"><input aria-label="거래 금액" required type="number" min="10" max="100000" step=".01" value={amount} onChange={e=>setAmount(e.target.value)}/><span>USDC</span></div></label><label>최소 예상 순차익<div className="field"><input aria-label="최소 예상 순차익" required type="number" min="0" max="100000" step=".01" value={min} onChange={e=>setMin(e.target.value)}/><span>USDC</span></div></label><label>DEX 한쪽 최대 체결가 차이<div className="field"><input aria-label="DEX 한쪽 최대 체결가 차이" required type="number" min="0.01" max="99.99" step=".01" value={impact} onChange={e=>setImpact(e.target.value)}/><span>%</span></div><small>풀 현물가 대비 불리한 차이로, 풀 수수료를 포함해요.</small></label><button className="apply">조건 적용</button>{settingsNote&&<small role="status">{settingsNote}</small>}</form><div className="scanCounts"><b>{snapshot?.mode||'이번 스캔'}</b><p>{snapshot?'최근 수집 '+tm(snapshot.at)+' KST':'첫 수집 대기'}</p></div></aside></div>}
  <DexStreamCoverage receipts={savedSnapshot?.streamCoverage?.swapReceipts} streams={savedSnapshot?.streamCoverage?.eventStreams} at={savedSnapshot?.streamCoverage?.reportedAt} now={now}/>
  <details className="feeds"><summary>데이터 소스 · {active.length}개 응답{dexFeeds.length>0&&` · DEX ${liveDex}/${dexFeeds.length}개 수신`}</summary>{coverage?.registry?.watchPools!=null&&<p className="feedCoverage">풀 감시 목록 {Number(coverage.registry.watchPools).toLocaleString()}개 · {tm(snapshot!.at)} KST 수집에서 가격이 확인된 풀 {Number(coverage.observedPools).toLocaleString()}개</p>}<div className="feedGrid">{sources.map(s=><div className="feed" key={s.id}><div><strong>{s.name}</strong><small><i className={s.ok&&now-s.time<45000?'greenDot':'greyDot'}/>{s.ok&&now-s.time<45000?(s.total!=null?Number(s.count).toLocaleString()+' / '+Number(s.total).toLocaleString()+'개 · 호가 '+Number(s.books).toLocaleString()+'개':Number(s.count||0).toLocaleString()+'개 수신'):s.ok?'갱신 대기':s.status||'수신 대기'}</small></div></div>)}</div></details>
  <footer><span>Gapdesk</span><span>Ethereum · BNB Chain · Base · Arbitrum</span></footer></main>
  <dialog ref={modalRef} onCancel={e=>{e.preventDefault();close()}}><div className="dialogHead"><h2>{walletOpen?'내 지갑':selected?'경로 확인':''}</h2><button className="iconButton" aria-label="닫기" disabled={acting} onClick={close}><X size={20}/></button></div>
- {walletOpen?<><div className="dialogBody"><Wallet size={28}/><h3>{address?address.slice(0,8)+'…'+address.slice(-6):'브라우저 지갑 연결'}</h3><p>계정 주소로 지원 체인의 USDC·가스 토큰 잔액을 조회합니다. 거래를 실행할 때 지갑에서 요청을 확인하고 서명합니다.</p>{address&&Object.entries(balances).map(([id,b])=><p key={id}>{chainName(Number(id))} · {format(b.usdc)} USDC · {format(b.eth,5)} {chains[id]?.gas}</p>)}{note&&<p role="status" className="message">{note}</p>}</div><button className="apply" onClick={address?close:wallet}>{address?'확인':'지갑에서 연결'}</button></>:selected?<><div className="dialogBody"><h3>{selected.symbol}</h3><QualifiedPair r={current?.row||selected} now={now}/><p>{format(selected.budget)} USDC 기준 · 예상 순차익 <b>+{format(selected.profit)} USDC</b></p><p>{chainName(selected.from)} · {selected.bridge||'직접 전송'} · {chainName(selected.to)}{selected.duration>0?' · 브리지 약 '+Math.ceil(selected.duration/60)+'분':''}</p>{selected.depthChecks?.map((d:Row)=><p key={d.side}>DEX {d.side==='buy'?'매수':'매도'} · 풀 예상 불이익 {format(d.poolImpactPct,3)}% · 라우터 최소 수령량 기준 {format(d.quoteImpactPct,3)}%</p>)}<div className="addressList">{selected.fromToken&&<ContractCopy item={{chain:selected.from,token:selected.fromToken}}/>}{selected.toToken&&(selected.to!==selected.from||selected.toToken!==selected.fromToken)&&<ContractCopy item={{chain:selected.to,token:selected.toToken}}/>}</div><p>예상 도착 {format(selected.arrival,6)} {selected.symbol||'ETH'} · 예상 매도 대금 {format(selected.proceeds)} USDC · 별도 가스 등 {format(selected.cost)} USDC</p><div className="steps">{routeSteps.map((s:Row,i:number)=><div key={i} className={index===i?'current':''}><span>{i<index?<Check size={14}/>:i+1}</span>{s.name}</div>)}</div>
- {current&&step?.manual?<p>{step.info} <a target="_blank" rel="noreferrer" href={venuePage(selected,step.manual===selected.buy)}>거래소 열기 <ArrowUpRight size={13}/></a></p>:<p>각 단계의 견적을 다시 확인합니다. 브리지 이동 중 매도 가격이 바뀌면 다음 단계가 중단될 수 있습니다.</p>}
+ {walletOpen?<><div className="dialogBody"><Wallet size={28}/><h3>{address?address.slice(0,8)+'…'+address.slice(-6):'브라우저 지갑 연결'}</h3><p>계정 주소로 지원 체인의 USDC·가스 토큰 잔액을 조회합니다. 거래를 실행할 때 지갑에서 요청을 확인하고 서명합니다.</p>{address&&Object.entries(balances).map(([id,b])=><p key={id}>{chainName(Number(id))} · {format(b.usdc)} USDC · {format(b.eth,5)} {chains[id]?.gas}</p>)}{note&&<p role="status" className="message">{note}</p>}</div><button className="apply" onClick={address?close:wallet}>{address?'확인':'지갑에서 연결'}</button></>:selected?<><div className="dialogBody"><h3>{selected.symbol}</h3><QualifiedPair r={current?.row||selected} now={now}/><p>{format(selected.budget)} USDC 기준 · 예상 순차익 <b>+{format(selected.profit)} USDC</b></p><p>이동 경로 · {routePath(selected.from,selected.to,selected.bridge,selected.duration)}</p>{selected.depthChecks?.map((d:Row)=><p key={d.side}>DEX {d.side==='buy'?'매수':'매도'} · 풀 예상 불이익 {format(d.poolImpactPct,3)}% · 라우터 최소 수령량 기준 {format(d.quoteImpactPct,3)}%</p>)}<div className="addressList">{selected.fromToken&&<ContractCopy item={{chain:selected.from,token:selected.fromToken}}/>}{selected.toToken&&(selected.to!==selected.from||selected.toToken!==selected.fromToken)&&<ContractCopy item={{chain:selected.to,token:selected.toToken}}/>}</div><p>예상 도착 {format(selected.arrival,6)} {selected.symbol||'ETH'} · 예상 매도 대금 {format(selected.proceeds)} USDC · 별도 가스 등 {format(selected.cost)} USDC</p><div className="steps">{routeSteps.map((s:Row,i:number)=><div key={i} className={index===i?'current':''}><span>{i<index?<Check size={14}/>:i+1}</span>{s.name}</div>)}</div>
+ {current&&step?.manual?<p>{step.info} {venuePage(selected,step.manual===selected.buy)&&<a target="_blank" rel="noreferrer" href={venuePage(selected,step.manual===selected.buy)}>거래소 열기 <ArrowUpRight size={13}/></a>}</p>:<p>각 단계의 견적을 다시 확인합니다. 브리지 이동 중 매도 가격이 바뀌면 다음 단계가 중단될 수 있습니다.</p>}
  {current?.pending&&<p><a target="_blank" rel="noreferrer" href={(chains[current.pending.from]?.explorer+'/tx/')+current.pending.hash}>트랜잭션 확인 <ArrowUpRight size={14}/></a></p>}
  {jobNote&&<p className="message" role="status">{jobNote}</p>}</div>
  {step||!current?<button className="apply" onClick={act} disabled={acting}>{acting?'확인 중…':!current?'최신 견적으로 경로 확인':current.pending?'체결 상태 확인':step?.manual?'거래소에서 완료했어요':'지갑에서 승인 또는 실행'}</button>:<button className="apply" onClick={()=>{job(null);close()}}>경로 완료</button>}

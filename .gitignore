@@ -43,3 +43,8 @@ yarn-error.log*
 
 # OS metadata
 .DS_Store
+
+# GCP builds and local Python state
+/gcp/frontend/dist/
+__pycache__/
+.venv/

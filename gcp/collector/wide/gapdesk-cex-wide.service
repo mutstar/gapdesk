@@ -1,0 +1,25 @@
+[Unit]
+Description=Gapdesk public CEX market feeds
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=gapdesk
+Group=gapdesk
+StateDirectory=gapdesk/cex-wide
+Environment=GAPDESK_LEGACY_PYTHON=/opt/gapdesk/cex-wide/venv/bin/python
+ExecStart=/opt/gapdesk/cex-wide/venv-4.5.93/bin/python /opt/gapdesk/cex-wide/collect.py
+Restart=on-failure
+RestartSec=10
+Nice=8
+CPUWeight=35
+MemoryHigh=850M
+MemoryMax=1150M
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

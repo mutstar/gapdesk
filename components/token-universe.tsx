@@ -1,4 +1,5 @@
 'use client';
+import {formatPercentValue} from '../lib/format-percent.mjs';
 import {useEffect,useMemo,useState} from 'react';
 import {ChevronDown,Route} from 'lucide-react';
 import {ContractCopy,type Contract} from './contract-copy';
@@ -6,6 +7,7 @@ import {DISPLAY_RETENTION_MS} from '../lib/observation-window.mjs';
 import {isFreshQualified,QUOTE_MAX_AGE_MS} from '../lib/quote-freshness.mjs';
 import {MarketSort,compareMarkets,useMarketOrder} from './market-sort';
 import {TradeLeg} from './trade-leg';
+import {routePath} from '../lib/execution-status.mjs';
 import {TokenBridge} from './token-bridge';
 import {bridgeDestinations} from '../lib/token-contracts.mjs';
 import {strictContractKey} from '../lib/contract-identity.mjs';
@@ -68,17 +70,18 @@ export function TokenUniverse({tokens,busy,at,budget,floor,address,now,verified}
  <div className="tokenBook">
  {filtered.slice(index*size,(index+1)*size).map(displayed).map(t=>{
    const contracts:Contract[]=t.contracts||[];
-   const primary=t.match;
+   const primary=t.match??t.nativeAsset;
    const cross=contracts.some(c=>bridgeDestinations(c,contracts).length>0);
    const row=t.quote?.bridge?t.quote:null;
    const expanded=!!open&&open.asset===t.asset;
    
    return <article className={'marketCard'+(t.previous?' tokenPrevious':'')} key={t.asset}>
-     <header className="marketCardHead"><h3>{t.symbol}</h3><div className="gapValue"><span>관찰 갭</span><strong>{t.gap==null?'—':num(t.gap)+'%'}</strong></div></header>
+     <header className="marketCardHead"><h3>{t.symbol}</h3><div className="gapValue"><span>관찰 갭</span><strong>{t.gap==null?'—':formatPercentValue(t.gap)+'%'}</strong></div></header>
      {t.gap!=null&&<div className="tradePair">
        <TradeLeg side="buy" chain={row?.from??primary?.chain} venue={t.buy} kind={t.buyKind} transfer={t.buyTransfer} now={now} price={t.ask??null} caption={t.buyImpact!=null?'풀 기준가 대비 '+Number(t.buyImpact).toFixed(2)+'% 불리':undefined}/>
        <TradeLeg side="sell" chain={row?.to??primary?.chain} venue={t.sell} kind={t.sellKind} transfer={t.sellTransfer} now={now} price={t.bid??null} caption={t.sellImpact!=null?'풀 기준가 대비 '+Number(t.sellImpact).toFixed(2)+'% 불리':undefined}/>
      </div>}
+     {t.gap!=null&&<div className="routePath">이동 경로 · {routePath(row?.from??primary?.chain,row?.to??primary?.chain,row?.bridge,row?.duration)}</div>}
      <div className="marketTools"><span className="marketState">{t.gap!=null&&t.time>0?(t.previous?'직전 ':'')+new Date(t.time).toLocaleTimeString('ko-KR',{timeZone:'Asia/Seoul',hour12:false})+' KST':''}</span><div className="marketActions">
      {primary?<ContractCopy item={primary}/>:<small>CA 미확인</small>}
      {contracts.length>1&&<button type="button" className="moreCA" aria-label={t.symbol+' 체인별 주소 펼치기'} aria-expanded={expanded&&!open?.lookup} onClick={()=>toggle(t.asset,false)}>+{contracts.length-1}<ChevronDown size={11}/></button>}
@@ -90,5 +93,5 @@ export function TokenUniverse({tokens,busy,at,budget,floor,address,now,verified}
  </div>{!filtered.length&&<p className="coinEmpty">{busy?'토큰 목록을 불러오고 있어요.':'검색 결과가 없습니다.'}</p>}
  <div className="pageBar"><button disabled={index===0} onClick={()=>setPage(index-1)}>이전</button><span>{index+1} / {last+1}</span><button disabled={index===last} onClick={()=>setPage(index+1)}>다음</button></div>
  <details className="observations"><summary>최근 24시간 감지 기록 {key&&'· '+key}</summary><p className="hint">이동 경로를 확인한 관찰 시세차 5% 이상 또는 금액별 견적을 통과한 경로의 시간대별 최고값입니다. 시각은 KST입니다.</p>
- {events.length?events.map((e,i)=><div className="logRow" key={i}><b>{e.symbol}</b><span>사는 곳 {e.buy} · 파는 곳 {e.sell}</span><span>{num(e.gap)}% · {e.kind}</span>{e.token&&<ContractCopy item={{chain:e.chain,token:e.token}}/>}<time>{new Date(e.seen).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></div>):<p className="hint">{historyOK?'저장된 기록이 없습니다.':'이력 저장소 연결을 확인하고 있어요.'}</p>}</details></>
+ {events.length?events.map((e,i)=><div className="logRow" key={i}><b>{e.symbol}</b><span>사는 곳 {e.buy} · 파는 곳 {e.sell}</span><span>{formatPercentValue(e.gap)}% · {e.kind}</span>{e.token&&<ContractCopy item={{chain:e.chain,token:e.token}}/>}<time>{new Date(e.seen).toLocaleString('ko-KR',{timeZone:'Asia/Seoul',hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}</time></div>):<p className="hint">{historyOK?'저장된 기록이 없습니다.':'이력 저장소 연결을 확인하고 있어요.'}</p>}</details></>
 }

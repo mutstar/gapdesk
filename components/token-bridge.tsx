@@ -1,6 +1,7 @@
 'use client';
 import {useEffect,useState} from 'react';
 import {ArrowRight,RefreshCw} from 'lucide-react';
+import {routePath} from '../lib/execution-status.mjs';
 import {bridgeDestinations,chainTitle,contractKey,shortCA} from '../lib/token-contracts.mjs';
 import {ContractCopy,type Contract} from './contract-copy';
 
@@ -43,7 +44,7 @@ export function TokenBridge({symbol,contracts,budget,floor,address,now,lookup,in
         <button type="button" disabled={busy} className="bridgeAction" onClick={()=>setRequest(v=>v+1)}><RefreshCw size={14}/>{busy?'조회 중':request?'다시 조회':'견적 조회'}</button>
       </div>
       <div className="bridgeResult" aria-live="polite">{busy?'현재 금액으로 이용할 수 있는 경로를 확인하고 있어요.':expired?'견적 시간이 지났어요. 다시 조회해 주세요.':shown?.status==='available'?<>
-        <b>{shown.provider}</b> · 최소 수령 {shown.minReceive} {symbol}{Number(shown.duration)>0?' · 약 '+(Number(shown.duration)<60?Math.ceil(Number(shown.duration))+'초':Math.ceil(Number(shown.duration)/60)+'분'):''}
+        <b>{routePath(from,to,shown.provider,shown.duration)}</b> · 최소 수령 {shown.minReceive} {symbol}
         {shown.gasUSD!=null?' · 예상 가스비 $'+Number(shown.gasUSD).toLocaleString('en-US',Number(shown.gasUSD)<0.01?{maximumSignificantDigits:3}:{maximumFractionDigits:2}):''}
       </>:shown?.reason||(shown?'이 조건의 견적을 확인할 수 없어요.':'출발·도착 체인을 선택해 현재 견적을 조회하세요.')}</div>
     </div>:<p>동일 자산으로 확인된 다른 지원 체인이 없어요.</p>}

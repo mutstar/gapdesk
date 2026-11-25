@@ -1,0 +1,27 @@
+[Unit]
+Description=Gapdesk owner web application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+Group=caddy
+RuntimeDirectory=gapdesk-web
+RuntimeDirectoryMode=0750
+UMask=0007
+WorkingDirectory=/opt/gapdesk
+ExecStart=/usr/bin/node /opt/gapdesk/gateway/server.mjs
+LoadCredentialEncrypted=sites-token:/etc/credstore.encrypted/gapdesk-sites-token
+Environment=GAPDESK_ORIGIN=https://gapdesk.example.com
+Environment=GAPDESK_STATIC_DIR=/opt/gapdesk/frontend
+Environment=GAPDESK_SOCKET=/run/gapdesk-web/gateway.sock
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

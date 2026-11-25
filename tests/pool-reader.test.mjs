@@ -61,6 +61,24 @@ test('full pinned batch handles reversed tokens, 6/18 decimals, V2 reserves and 
   assert.equal(coverage[0].priced, 2); assert.equal(coverage[0].complete, true);
 });
 
+test('an explicit settlement pool supplies a same-block mark and rejects a mismatched conversion',async()=>{
+  const a=address(901),counter=address(902),pool=address(903),conversion=address(904);
+  const factory='0x5c69bee701ef814a2b6a3edd4b1652cb9cc5aa6f';
+  const rpc=mockRpc(Date.now(),(target,selector)=>{
+    if(selector==='0dfe1681')return addressWord(target===pool?a:counter);
+    if(selector==='d21220a7')return addressWord(target===pool?counter:usdc);
+    if(selector==='c45a0155')return addressWord(factory);
+    if(selector==='0902f1ac')return word(1000000000)+word(target===pool?2000000000:3000000000)+word(1);
+    return null;
+  });
+  const tracked={...entry(pool,a,'v2',counter),protocol:'v2',settlementPool:conversion};
+  const anchor={...entry(conversion,counter),protocol:'v2'};
+  const run=async ref=>(await readPools([{...tracked,settlementPool:ref},anchor],[asset(a,6),asset(counter,6,99)],{rpc,intervalMs:0})).markets.find(m=>m.token===a);
+  const mark=await run(conversion);
+  assert.equal(mark.ask,6);assert.equal(mark.depthBridges[0].block,mark.block);
+  assert.equal(await run(address(999)),undefined);
+});
+
 test('one missing or wrong pool never suppresses later batches; unsupported curves stay visible in coverage', async () => {
   const a = address(44), p = address(201), q = address(202), unknown = { ...entry(address(203), a), dexId: 'curve' };
   const rpc = mockRpc(Date.now(), (target, selector) => {

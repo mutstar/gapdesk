@@ -8,6 +8,7 @@ import {gzipSync} from 'node:zlib';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {poolValuationAssets} from '../lib/pool-anchors.mjs';
 import {prepareScan} from '../lib/universe.mjs';
+import {primeCurrencyNetworks} from '../lib/cex-catalog.mjs';
 import {createIndexedPoolReader,readIndexedPools} from '../lib/indexed-pools.mjs';
 import {recentV4Pools} from '../lib/v4-discovery.mjs';
 import {readWideFiles,wideMarkets} from '../lib/wide-markets.mjs';
@@ -254,6 +255,8 @@ function pollSwaps(){
   void eventWatcher.refresh().then(()=>resolveKeys(eventWatcher.swaps())).catch(failed);
   void publishSwaps();
 }
+const initialCurrencies=await primeCurrencyNetworks().catch(()=>[]);
+console.log('Currency records with network identity (KuCoin, Bitget, Gate):',...initialCurrencies);
 pollSwaps();
 const swapClock=setInterval(pollSwaps,4000);
 swapClock.unref();

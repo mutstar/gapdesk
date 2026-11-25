@@ -1,4 +1,5 @@
 'use client';
+import {formatPercentValue} from '../lib/format-percent.mjs';
 import {useEffect,useState} from 'react';
 import {networks} from '../lib/dex-venues.mjs';
 import {ContractCopy} from './contract-copy';
@@ -23,7 +24,7 @@ function GapRow({r}:{r:Row}){
       <TradeLeg side="buy" chain={r.chain} venue={r.buy} perp={r.status.startsWith('perp_')&&r.buy.endsWith(' 선물')} price={r.entryAsk} caption="최초 감지 가격"/>
       <TradeLeg side="sell" chain={r.chain} venue={r.sell} perp={r.status.startsWith('perp_')&&r.sell.endsWith(' 선물')} price={r.entryBid} caption="최초 감지 가격"/>
     </div>
-    <div className="signalNumbers"><span>최초 갭 <b>+{display(r.entryGap)}%</b></span><span>{active?'최근 갭':'마지막 관측 갭'} <b>+{display(r.latestGap)}%</b></span>
+    <div className="signalNumbers"><span>최초 갭 <b>+{formatPercentValue(r.entryGap)}%</b></span><span>{active?'최근 갭':'마지막 관측 갭'} <b>+{formatPercentValue(r.latestGap)}%</b></span>
     {r.status==='passed'&&<span>당시 예상 순차익 <b>+{display(r.profit,4)} USDC</b></span>}</div>
     <p>당시 {display(r.budget)} USDC {r.status.startsWith('perp_')?'· 수수료·펀딩 전':'· 최소 순차익 '+display(r.floor)+' USDC'} · DEX 허용 차이 {display(r.maxImpact)}%</p>
     <details><summary>가격과 관측 시각</summary><p>매수 {price(r.entryAsk)} → {price(r.latestAsk)} USDC · 매도 {price(r.entryBid)} → {price(r.latestBid)} USDC</p>
@@ -34,7 +35,7 @@ function SpikeRow({r}:{r:Row}){
   const swap=r.marketId?.startsWith('swap/')?r.marketId.split('/').map(decodeURIComponent):null;
   const unitMatch=/:(bbo|last):([^:]+)$/.exec(r.marketId||''), unit=swap?(swap[4]||'지수'):unitMatch?decodeURIComponent(unitMatch[2]):'USDC', last=unitMatch?.[1]==='last';
   const up=r.side==='up', poolMark=!!swap||r.venue?.startsWith('Uniswap V4 ·');
-  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {last?(up?'체결가 급등':'체결가 급락'):poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{display(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
+  return <article className="signalCard"><div className="signalHead"><strong>{r.symbol}</strong><span className={'spikeMove '+(up?'rise':'drop')}>{up?<ArrowUpRight size={15}/>:<ArrowDownRight size={15}/>} {last?(up?'체결가 급등':'체결가 급락'):poolMark?(up?'풀 가격 급등':'풀 가격 급락'):(up?'매도가 급등':'매수가 급락')} {up?'+':''}{formatPercentValue(r.changePct)}%</span><time>{kst(r.at)} KST</time></div>
     <div className="signalRoute">{r.venue} · {swap?'스왑 기준 최근 1분':windowText(r.windowSec)+' 구간'}</div>
     <div className="signalNumbers"><span>{last?'기준 체결가':poolMark?'기준 풀 가격':up?'기준 매수가':'기준 매도가'} <b>{price(r.baselinePrice)}</b></span><span>{last?'감지 체결가':poolMark?'감지 풀 가격':up?'감지 매도가':'감지 매수가'} <b>{price(r.price)} {unit}</b></span></div>
     {swap&&<details><summary>풀 정보</summary><p>풀 <code style={{overflowWrap:'anywhere'}}>{swap[2]}</code></p>{swap[3]&&<ContractCopy item={{chain:(networks as Record<string,number|string>)[swap[1]]??swap[1],token:swap[3]}}/>}{!swap[4]&&<p>기준 스왑 가격을 100으로 환산한 지수입니다.</p>}</details>}
@@ -49,7 +50,7 @@ function Earlier({symbol,before}:{symbol:string,before:number}){
     }).catch(()=>{if(!c.signal.aborted)setError(true)}).finally(()=>{if(!c.signal.aborted)setBusy(false)});return()=>c.abort();
   },[symbol,before]);
   return <details className="pastSignals"><summary>기존 24시간 기록 · {symbol}</summary><p>기존 수집기는 시간대별 최고 갭을 저장했어요. 최초 시각과 당시 설정 금액은 기록 전입니다.</p>
-    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · 사는 곳 {r.buy} · 파는 곳 {r.sell} · {display(r.gap)}% · {r.kind} <ContractCopy item={{chain:r.chain,token:r.token}}/></p>)}
+    {rows.map(r=><p key={r.id||[r.seen,r.kind,r.buy,r.sell].join('|')}>{kst(r.seen)} KST · 사는 곳 {r.buy} · 파는 곳 {r.sell} · {formatPercentValue(r.gap)}% · {r.kind} <ContractCopy item={{chain:r.chain,token:r.token}}/></p>)}
     {!rows.length&&<p>{busy?'조회 중…':error?'기존 기록을 불러오지 못했어요.':'이 심볼의 이전 기록이 없어요.'}</p>}</details>
 }
 export function SignalHistory({kind,revision}:Props){

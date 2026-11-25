@@ -171,3 +171,14 @@
   .gapQuoteList { margin-inline: 10px; }
   .gapQuoteRow { padding: 9px; gap: 8px; }
 }
+.routePath { color:#435f76; font-size:.875rem; margin:.55rem 0; overflow-wrap:anywhere }
+.executionTabs,.executionInfo { display:flex; align-items:center; flex-wrap:wrap; gap:.45rem }
+.executionTabs { margin:0 1.3rem 1rem }
+.executionTabs button { background:#f0f5fa; color:#33536d; border:1px solid #c9dbe8; border-radius:1rem; padding:.3rem .7rem; font-size:.875rem }
+.executionTabs button[aria-pressed=true] { background:#164f79; color:white; border-color:#164f79 }
+.executionInfo { margin:.4rem 0 .65rem; font-size:.875rem; color:#476079 }
+.executionInfo strong { border-radius:.35rem; padding:.15rem .5rem; background:#edf2f6 }
+.executionInfo [data-mode=ready] { background:#e0f4ea; color:#106146 }
+.executionInfo [data-mode=manual] { background:#fff0d9; color:#804a0b }
+.dexBasis { margin:0 1.3rem .75rem; font-size:.875rem; color:#476079 }
+.gapPoolId { display:block; font-size:.8rem; color:#486176 }
